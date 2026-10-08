@@ -25,9 +25,6 @@
   #video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
   #video.mirror { transform: scaleX(-1); }
   #overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
-  #fx { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
-  #fxBtn.loading { animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: .4; } }
 
   #controls {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
@@ -207,7 +204,6 @@
 
 <div id="stage">
   <video id="video" autoplay playsinline muted disablepictureinpicture disableremoteplayback></video>
-  <canvas id="fx"></canvas>
   <canvas id="overlay"></canvas>
 </div>
 
@@ -215,7 +211,7 @@
 <div id="flash"></div>
 
 <div id="controls">
-  <div class="ctl" id="fxCtl"><button class="round" id="fxBtn" aria-label="Effet sorcière">🧙</button><span id="fxLabel">Sorcière</span></div>
+  <div class="ctl" aria-hidden="true" style="visibility:hidden"><span class="round"></span><span>Retourner</span></div>
   <button id="shutter" aria-label="Prendre la photo">🎃</button>
   <div class="ctl"><button class="round" id="switchBtn" aria-label="Retourner la caméra">🔄</button><span>Retourner</span></div>
 </div>
@@ -273,8 +269,6 @@ const CONFIG = {
   urlEnvoi: "https://script.google.com/macros/s/AKfycbyDxFbVk5VjKqHWECnpjt9UBWVyByYAZvGKmPpk_ca00UqHjBgMtJnxQuYlUmT2Xwe8/exec",
   // Format des photos : "camera" (3:4 / 4:3, format du téléphone) ou "2:3" (format tirage photo 10x15)
   format: "2:3",
-  // Effet visage façon Snapchat (chapeau de sorcière + nez crochu) : true = activé
-  effetVisage: true,
   // Texte de consentement affiché avant l'envoi aux organisateurs
   organisateurs: "Marché des Sorcières",
   conservation: "1 mois",
@@ -611,7 +605,7 @@ function placePreview() {
   if (land) { st.top = ''; st.bottom = ''; st.right = ''; st.left = ''; st.width = ''; }   // réglages du CSS (bord droit)
   else { st.left = '0px'; st.right = '0px'; st.bottom = 'auto'; st.top = '0px'; st.width = ''; }
   const r = previewRect();
-  for (const el of [video, overlay, document.getElementById('fx')]) {
+  for (const el of [video, overlay]) {
     el.style.left = r.x + 'px'; el.style.top = r.y + 'px';
     el.style.width = r.w + 'px'; el.style.height = r.h + 'px';
   }
@@ -662,15 +656,6 @@ function capture() {
   if (mirrored) { ctx.translate(W, 0); ctx.scale(-1, 1); }
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
   ctx.restore();
-  // effet sorcière sur les visages, à la pleine résolution de la photo
-  if (fxOn && faceLandmarker) {
-    try {
-      const res = faceLandmarker.detectForVideo(video, Math.max(performance.now(), lastTs + 1));
-      lastTs = performance.now();
-      const map = p => ({ x: mirrored ? W - (p.x * vw - sx) : (p.x * vw - sx), y: p.y * vh - sy });
-      (res.faceLandmarks || []).forEach(lm => drawWitchFace(ctx, lm, map, true));
-    } catch (e) {}
-  }
   paintFrame(ctx, W, H);
 
   const f = document.getElementById('flash');
@@ -789,7 +774,7 @@ document.addEventListener('visibilitychange', () => {
 });
 video.addEventListener('enterpictureinpicture', () => { if (document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {}); });
 
-document.getElementById('startBtn').onclick = () => { goFullscreen(); startCamera(); if (CONFIG.effetVisage) setFx(true); };
+document.getElementById('startBtn').onclick = () => { goFullscreen(); startCamera(); };
 // Si le plein écran a été quitté, on le remet au prochain appui sur le déclencheur
 document.getElementById('shutter').addEventListener('click', goFullscreen);
 document.getElementById('retakeBtn').addEventListener('click', goFullscreen);
@@ -819,404 +804,6 @@ async function doSend() {
   b.textContent = '✓ Envoyée aux organisateurs';
 }
 document.getElementById('shareBtn').onclick = () => { if (lastBlob) share(); };
-
-
-/* ===================== Effet visage (chapeau de sorcière + nez crochu) =====================
-   Détection des visages avec MediaPipe (Google), directement sur le téléphone :
-   aucune image n'est envoyée nulle part pour cette détection. */
-let faceLandmarker = null, fxOn = false, fxLoading = false, lastTs = 0;
-const fxCanvas = document.getElementById('fx');
-const fxBtn = document.getElementById('fxBtn');
-const fxLabel = document.getElementById('fxLabel');
-if (!CONFIG.effetVisage) document.getElementById('fxCtl').style.visibility = 'hidden';
-
-async function loadFaceLandmarker() {
-  const versions = ['0.10.14', '0.10.3'];
-  let lastErr;
-  for (const v of versions) {
-    try {
-      const base = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + v;
-      const vision = await import(base + '/vision_bundle.mjs');
-      const fileset = await vision.FilesetResolver.forVisionTasks(base + '/wasm');
-      const opts = (delegate) => ({
-        baseOptions: {
-          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-          delegate
-        },
-        runningMode: 'VIDEO', numFaces: 4
-      });
-      try { return await vision.FaceLandmarker.createFromOptions(fileset, opts('GPU')); }
-      catch (e) { return await vision.FaceLandmarker.createFromOptions(fileset, opts('CPU')); }
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr;
-}
-
-async function setFx(on) {
-  if (on && !faceLandmarker) {
-    if (fxLoading) return;
-    fxLoading = true; fxBtn.classList.add('loading'); fxLabel.textContent = 'Chargement…';
-    try { faceLandmarker = await loadFaceLandmarker(); }
-    catch (e) {
-      fxLoading = false; fxBtn.classList.remove('loading');
-      fxLabel.textContent = 'Indisponible'; fxBtn.disabled = true;
-      return;
-    }
-    fxLoading = false; fxBtn.classList.remove('loading');
-  }
-  fxOn = on;
-  fxBtn.classList.toggle('on', fxOn);
-  fxLabel.textContent = fxOn ? 'Sorcière ✓' : 'Sorcière';
-  if (fxOn) requestAnimationFrame(fxLoop); else clearFx();
-}
-fxBtn.onclick = () => setFx(!fxOn);
-
-function clearFx() {
-  const c = fxCanvas.getContext('2d');
-  c.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
-}
-
-// Boucle d'aperçu : détecte les visages et dessine l'effet par-dessus l'image de la caméra
-// Petite image réduite pour la détection : beaucoup plus rapide que l'image caméra en pleine résolution
-const detCanvas = document.createElement('canvas');
-function detectionFrame() {
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const k = 480 / Math.max(vw, vh);
-  const w = Math.round(vw * k), h = Math.round(vh * k);
-  if (detCanvas.width !== w || detCanvas.height !== h) { detCanvas.width = w; detCanvas.height = h; }
-  detCanvas.getContext('2d').drawImage(video, 0, 0, w, h);
-  return detCanvas;
-}
-let lastFrame = 0;
-function fxLoop() {
-  if (!fxOn) return;
-  requestAnimationFrame(fxLoop);
-  if (!faceLandmarker || !stream || video.readyState < 2 || !video.videoWidth) return;
-  if (document.getElementById('result').style.display === 'flex') return;
-  const now = performance.now();
-  if (now - lastFrame < 40) return;          // environ 25 images par seconde maximum
-  lastFrame = now;
-  if (now <= lastTs) return;
-  let res;
-  try { res = faceLandmarker.detectForVideo(detectionFrame(), now); lastTs = now; } catch (e) { return; }
-  // aperçu dessiné en résolution modérée (suffisant à l'écran, bien plus fluide)
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
-  const r = fxCanvas.getBoundingClientRect();
-  const Wc = Math.round(r.width * dpr), Hc = Math.round(r.height * dpr);
-  if (fxCanvas.width !== Wc || fxCanvas.height !== Hc) { fxCanvas.width = Wc; fxCanvas.height = Hc; }
-  const ctx = fxCanvas.getContext('2d');
-  ctx.clearRect(0, 0, Wc, Hc);
-  // correspondance image caméra -> zone affichée (recadrage "cover" + miroir en selfie)
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const sc = Math.max(Wc / vw, Hc / vh);
-  const ox = (Wc - vw * sc) / 2, oy = (Hc - vh * sc) / 2;
-  const map = p => {
-    const x = ox + p.x * vw * sc, y = oy + p.y * vh * sc;
-    return { x: mirrored ? Wc - x : x, y };
-  };
-  const faces = res.faceLandmarks || [];
-  if (faces.length) {
-    // l'image de la caméra est recopiée ici pour que le maquillage puisse s'y fondre
-    ctx.save();
-    if (mirrored) { ctx.translate(Wc, 0); ctx.scale(-1, 1); }
-    ctx.drawImage(video, ox, oy, vw * sc, vh * sc);
-    ctx.restore();
-  }
-  faces.forEach(lm => drawWitchFace(ctx, lm, map, false));
-}
-
-// Dessine le chapeau et le nez sur un visage (lm = 478 points normalisés, map = conversion en pixels)
-function drawWitchFace(ctx, lm, map, hq) {
-  const P = i => map(lm[i]);
-  const top = P(10), chin = P(152), left = P(234), right = P(454);
-  const tip = P(1), bridge = P(168);
-  const faceW = Math.hypot(right.x - left.x, right.y - left.y);
-  const faceH = Math.hypot(top.x - chin.x, top.y - chin.y);
-  if (faceW < 10) return;
-  // orientation de la tête : vecteur menton -> front
-  const ux = (top.x - chin.x) / faceH, uy = (top.y - chin.y) / faceH;
-  const angle = Math.atan2(uy, ux) + Math.PI / 2;
-  drawWitchMakeup(ctx, lm, map, faceW, hq);
-  drawNoseWart(ctx, tip, faceW, angle);
-  drawWitchHair(ctx, top, faceW, faceH, angle);
-  const hx = top.x - ux * faceH * 0.02, hy = top.y - uy * faceH * 0.02;
-  drawWitchHat(ctx, hx, hy, faceW * 1.15, angle);
-}
-
-// ---------- Maquillage de sorcière : peau verte, fard violet, lèvres sombres ----------
-const FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
-const EYE_R = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246];
-const EYE_L = [263,249,390,373,374,380,381,382,362,398,384,385,386,387,388,466];
-const LID_R = [33,246,161,160,159,158,157,173,133], BROW_R = [46,53,52,65,55];
-const LID_L = [263,466,388,387,386,385,384,398,362], BROW_L = [276,283,282,295,285];
-const LOW_R = [33,7,163,144,145,153,154,155,133], LOW_L = [263,249,390,373,374,380,381,382,362];
-const LIPS_OUT = [61,146,91,181,84,17,314,405,321,375,291,409,270,269,267,0,37,39,40,185];
-const LIPS_IN = [78,95,88,178,87,14,317,402,318,324,308,415,310,311,312,13,82,81,80,191];
-const BROW_FULL_R = [70,63,105,66,107,55,65,52,53,46], BROW_FULL_L = [300,293,334,296,336,285,295,282,283,276];
-
-function addPoly(path, pts) {
-  pts.forEach((p, i) => i ? path.lineTo(p.x, p.y) : path.moveTo(p.x, p.y));
-  path.closePath();
-}
-// Remplissage à bords flous (marche aussi sur iPhone) : on dessine la forme hors du cadre
-// et seule son ombre floue, ramenée à la bonne place, apparaît.
-function softFill(ctx, path, color, blur, mode) {
-  ctx.save();
-  ctx.globalCompositeOperation = mode || 'source-over';
-  const off = 20000;
-  ctx.shadowColor = color; ctx.shadowBlur = blur; ctx.shadowOffsetX = off; ctx.shadowOffsetY = 0;
-  ctx.translate(-off, 0);
-  ctx.fillStyle = '#000';
-  ctx.fill(path, 'evenodd');
-  ctx.restore();
-}
-function drawWitchMakeup(ctx, lm, map, faceW, hq) {
-  const pts = ids => ids.map(i => map(lm[i]));
-  const blur = Math.max(2, faceW * 0.035);
-  // 1) peau verte sur le visage (sans les yeux ni l'intérieur de la bouche)
-  const skin = new Path2D();
-  addPoly(skin, pts(FACE_OVAL));
-  addPoly(skin, pts(EYE_R)); addPoly(skin, pts(EYE_L)); addPoly(skin, pts(LIPS_IN));
-  softFill(ctx, skin, 'rgba(70,170,60,.45)', blur * 1.5, 'color');
-  if (hq) softFill(ctx, skin, 'rgba(150,200,120,.22)', blur * 1.5, 'multiply');
-  // 2) fard à paupières violet, entre l'œil et le sourcil
-  for (const [lid, brow] of [[LID_R, BROW_R], [LID_L, BROW_L]]) {
-    const sh = new Path2D();
-    addPoly(sh, pts(lid).concat(pts(brow).reverse()));
-    softFill(ctx, sh, 'rgba(95,20,120,.9)', blur * 1.2, 'multiply');
-    if (hq) softFill(ctx, sh, 'rgba(60,10,80,.35)', blur * 0.5, 'multiply');
-  }
-  // 3) cernes sombres sous les yeux
-  for (const low of [LOW_R, LOW_L]) {
-    const p = pts(low);
-    const c = new Path2D();
-    addPoly(c, p.concat(p.slice().reverse().map(q => ({ x: q.x, y: q.y + faceW * 0.05 }))));
-    softFill(ctx, c, 'rgba(60,30,70,.45)', blur, 'multiply');
-  }
-  // 4) sourcils plus sombres
-  for (const br of [BROW_FULL_R, BROW_FULL_L]) {
-    const b = new Path2D(); addPoly(b, pts(br));
-    if (hq) softFill(ctx, b, 'rgba(20,10,25,.7)', blur * 0.35, 'multiply');
-    else { ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = 'rgba(20,10,25,.6)'; ctx.fill(b); ctx.restore(); }
-  }
-  // 5) lèvres violet très foncé
-  const lips = new Path2D();
-  addPoly(lips, pts(LIPS_OUT)); addPoly(lips, pts(LIPS_IN));
-  if (hq) softFill(ctx, lips, 'rgba(55,10,60,.85)', blur * 0.3, 'source-over');
-  else { ctx.save(); ctx.fillStyle = 'rgba(55,10,60,.8)'; ctx.fill(lips, 'evenodd'); ctx.restore(); }
-}
-
-// Grosse verrue sur le bout du nez, décalée sur le côté : une boule irrégulière et granuleuse, avec un poil
-function drawNoseWart(ctx, tip, s, angle) {
-  ctx.save();
-  ctx.translate(tip.x, tip.y); ctx.rotate(angle);
-  ctx.translate(s * 0.048, s * 0.004);                // désaxée vers le côté du nez
-  const r = s * 0.042;
-  // contour irrégulier
-  const blob = new Path2D();
-  const n = 9;
-  for (let i = 0; i <= n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    const k = 1 + 0.12 * Math.sin(a * 3 + 1) + 0.07 * Math.cos(a * 5);
-    const x = Math.cos(a) * r * k, y = Math.sin(a) * r * k * 0.9;
-    i ? blob.lineTo(x, y) : blob.moveTo(x, y);
-  }
-  blob.closePath();
-  // ombre portée
-  ctx.save(); ctx.translate(r * 0.15, r * 0.3);
-  ctx.fillStyle = 'rgba(30,20,10,.35)'; ctx.fill(blob); ctx.restore();
-  // volume
-  const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r * 1.1);
-  g.addColorStop(0, '#a9b06a'); g.addColorStop(0.6, '#6f7a3a'); g.addColorStop(1, '#3e4620');
-  ctx.fillStyle = g; ctx.fill(blob);
-  // relief granuleux : petites bosses claires/sombres qui se fondent dans la verrue
-  ctx.save(); ctx.clip(blob);
-  for (const [x, y, rr, light] of [[-0.35, 0.15, 0.32, 0], [0.3, -0.25, 0.3, 1], [0.35, 0.35, 0.28, 0], [-0.1, -0.5, 0.26, 1], [0.0, 0.1, 0.3, 1], [-0.45, -0.25, 0.22, 0]]) {
-    const gg = ctx.createRadialGradient(x * r, y * r, 0, x * r, y * r, rr * r);
-    gg.addColorStop(0, light ? 'rgba(220,225,160,.35)' : 'rgba(30,35,10,.3)');
-    gg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = gg; ctx.fillRect((x - rr) * r, (y - rr) * r, 2 * rr * r, 2 * rr * r);
-  }
-  ctx.restore();
-  // reflet
-  ctx.fillStyle = 'rgba(255,250,235,.55)';
-  ctx.beginPath(); ctx.ellipse(-r * 0.35, -r * 0.4, r * 0.22, r * 0.13, -0.6, 0, Math.PI * 2); ctx.fill();
-  // un long poil fin et frisé
-  ctx.strokeStyle = 'rgba(25,18,10,.85)'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(r * 0.2, -r * 0.7);
-  ctx.bezierCurveTo(r * 0.5, -r * 1.3, r * 0.1, -r * 1.6, r * 0.6, -r * 2.0); ctx.stroke();
-  ctx.restore();
-}
-
-// Couleur moyenne de la peau (prise sur les joues) pour que le nez se fonde dans le visage
-function sampleSkin(ctx, pts) {
-  let r = 0, g = 0, b = 0, n = 0;
-  for (const p of pts) {
-    try {
-      const d = ctx.getImageData(Math.round(p.x) - 3, Math.round(p.y) - 3, 6, 6).data;
-      for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 200) continue; r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
-    } catch (e) {}
-  }
-  if (!n) return [200, 160, 130];
-  return [r / n, g / n, b / n];
-}
-const mix = (c, t, k) => c.map((v, i) => Math.round(v * (1 - k) + t[i] * k));
-const rgb = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-
-function drawWitchHat(ctx, x, y, s, angle) {
-  ctx.save();
-  ctx.translate(x, y); ctx.rotate(angle);
-  ctx.lineJoin = 'round';
-  // ombre douce
-  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = s * 0.05; ctx.shadowOffsetY = s * 0.02;
-  // cône (pointe pliée vers l'arrière)
-  const g = ctx.createLinearGradient(-s * 0.4, 0, s * 0.4, 0);
-  g.addColorStop(0, '#120818'); g.addColorStop(0.55, '#2c1240'); g.addColorStop(1, '#120818');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.moveTo(-s * 0.36, -s * 0.05);
-  ctx.quadraticCurveTo(-s * 0.22, -s * 0.55, -s * 0.06, -s * 0.85);
-  ctx.quadraticCurveTo(s * 0.02, -s * 1.02, s * 0.32, -s * 1.08);   // pointe
-  ctx.quadraticCurveTo(s * 0.12, -s * 0.92, s * 0.1, -s * 0.78);
-  ctx.quadraticCurveTo(s * 0.2, -s * 0.4, s * 0.36, -s * 0.05);
-  ctx.closePath(); ctx.fill();
-  // bord large
-  ctx.shadowBlur = s * 0.04;
-  const gb = ctx.createLinearGradient(0, -s * 0.12, 0, s * 0.12);
-  gb.addColorStop(0, '#2c1240'); gb.addColorStop(1, '#0d0512');
-  ctx.fillStyle = gb;
-  ctx.beginPath(); ctx.ellipse(0, 0, s * 0.72, s * 0.13, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.shadowColor = 'transparent';
-  // ruban violet
-  ctx.fillStyle = '#7b2fbf';
-  ctx.beginPath();
-  ctx.moveTo(-s * 0.345, -s * 0.1); ctx.lineTo(s * 0.345, -s * 0.1);
-  ctx.lineTo(s * 0.33, -s * 0.2); ctx.lineTo(-s * 0.33, -s * 0.2); ctx.closePath(); ctx.fill();
-  // boucle dorée
-  ctx.strokeStyle = '#f5c542'; ctx.lineWidth = s * 0.025;
-  ctx.strokeRect(-s * 0.06, -s * 0.205, s * 0.12, s * 0.11);
-  ctx.restore();
-}
-
-// Nez de sorcière façon prothèse en latex : base large sur le vrai nez avec l'aile de la narine,
-// long nez qui descend en biais, bout pointu légèrement relevé, grosse verrue brune.
-function softStroke(ctx, path, color, width, steps) {
-  // trait large et dégradé (imite un flou, compatible iPhone)
-  for (let i = steps; i >= 1; i--) {
-    ctx.strokeStyle = color(i / steps);
-    ctx.lineWidth = width * i / steps;
-    ctx.stroke(path);
-  }
-}
-function drawWitchNose(ctx, tip, bridge, s, angle, skin) {
-  const base = mix(skin, [205, 160, 125], 0.35);           // teinte "latex" proche de la peau
-  const dark = mix(base, [70, 35, 25], 0.55), light = mix(base, [255, 245, 230], 0.55);
-  const L = Math.max(Math.hypot(tip.x - bridge.x, tip.y - bridge.y), s * 0.12);
-  ctx.save();
-  ctx.translate(tip.x, tip.y); ctx.rotate(angle);
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-
-  const nose = new Path2D();
-  nose.moveTo(s * 0.04, -L * 0.95);                                                      // haut de l'arête (droite)
-  nose.bezierCurveTo(s * 0.055, -L * 0.4, s * 0.09, -s * 0.08, s * 0.105, s * 0.0);
-  nose.bezierCurveTo(s * 0.135, s * 0.03, s * 0.135, s * 0.115, s * 0.08, s * 0.125);    // aile de la narine
-  nose.bezierCurveTo(s * 0.03, s * 0.135, -s * 0.04, s * 0.165, -s * 0.1, s * 0.235);    // dessous du long nez
-  nose.bezierCurveTo(-s * 0.13, s * 0.27, -s * 0.155, s * 0.3, -s * 0.168, s * 0.335);
-  nose.bezierCurveTo(-s * 0.175, s * 0.37, -s * 0.18, s * 0.4, -s * 0.19, s * 0.43);     // crochet qui retombe vers le bas
-  nose.bezierCurveTo(-s * 0.215, s * 0.41, -s * 0.238, s * 0.35, -s * 0.226, s * 0.305); // dos du crochet
-  nose.bezierCurveTo(-s * 0.2, s * 0.25, -s * 0.15, s * 0.15, -s * 0.115, s * 0.075);    // dessus du long nez
-  nose.bezierCurveTo(-s * 0.09, s * 0.01, -s * 0.06, -L * 0.4, -s * 0.042, -L * 0.95);   // arête (gauche), assez large pour cacher le vrai nez
-  nose.closePath();
-
-  // ombre portée sur le visage
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = s * 0.06; ctx.shadowOffsetX = s * 0.03; ctx.shadowOffsetY = s * 0.06;
-  ctx.fillStyle = rgb(base); ctx.fill(nose);
-  ctx.restore();
-
-  ctx.save(); ctx.clip(nose);
-  // dégradé général : lumière en haut à gauche
-  const g = ctx.createLinearGradient(-s * 0.12, s * 0.12, s * 0.02, s * 0.28);
-  g.addColorStop(0, rgb(light)); g.addColorStop(0.45, rgb(base)); g.addColorStop(1, rgb(dark));
-  ctx.fillStyle = g; ctx.fill(nose);
-  // ombre douce le long du dessous
-  const under = new Path2D();
-  under.moveTo(s * 0.1, s * 0.125);
-  under.bezierCurveTo(s * 0.03, s * 0.14, -s * 0.04, s * 0.175, -s * 0.1, s * 0.245);
-  under.bezierCurveTo(-s * 0.135, s * 0.28, -s * 0.16, s * 0.31, -s * 0.172, s * 0.36);
-  under.bezierCurveTo(-s * 0.178, s * 0.39, -s * 0.183, s * 0.41, -s * 0.19, s * 0.43);
-  softStroke(ctx, under, k => rgb(dark, 0.18), s * 0.09, 5);
-  // côté droit de la base (sous l'aile) plus sombre
-  const gr = ctx.createRadialGradient(s * 0.09, s * 0.1, 0, s * 0.09, s * 0.1, s * 0.07);
-  gr.addColorStop(0, rgb(dark, 0.45)); gr.addColorStop(1, rgb(dark, 0));
-  ctx.fillStyle = gr; ctx.fillRect(0, 0, s * 0.2, s * 0.2);
-  // reflet le long de l'arête puis du dessus du long nez
-  const ridge = new Path2D();
-  ridge.moveTo(-s * 0.005, -L * 0.75);
-  ridge.bezierCurveTo(-s * 0.01, -s * 0.02, -s * 0.07, s * 0.13, -s * 0.2, s * 0.3);
-  ridge.bezierCurveTo(-s * 0.215, s * 0.33, -s * 0.215, s * 0.37, -s * 0.205, s * 0.4);
-  softStroke(ctx, ridge, k => rgb(light, 0.16), s * 0.05, 5);
-  // reflet brillant sur le bout
-  const gt = ctx.createRadialGradient(-s * 0.212, s * 0.34, 0, -s * 0.212, s * 0.34, s * 0.03);
-  gt.addColorStop(0, rgb(light, 0.9)); gt.addColorStop(1, rgb(light, 0));
-  ctx.fillStyle = gt; ctx.fillRect(-s * 0.26, s * 0.29, s * 0.08, s * 0.08);
-  ctx.restore();
-
-  // pli de l'aile de la narine + ouverture
-  const crease = new Path2D();
-  crease.moveTo(s * 0.085, -s * 0.005);
-  crease.bezierCurveTo(s * 0.055, s * 0.02, s * 0.05, s * 0.09, s * 0.075, s * 0.118);
-  softStroke(ctx, crease, k => rgb(dark, 0.3), s * 0.014, 3);
-  ctx.fillStyle = rgb(mix(dark, [20, 10, 8], 0.5), 0.75);
-  ctx.beginPath(); ctx.ellipse(s * 0.06, s * 0.128, s * 0.022, s * 0.008, -0.25, 0, Math.PI * 2); ctx.fill();
-
-  // contour très doux
-  ctx.strokeStyle = rgb(dark, 0.35); ctx.lineWidth = s * 0.004; ctx.stroke(nose);
-
-  // grosse verrue brune sur le côté du nez
-  const wx = -s * 0.085, wy = s * 0.15, wr = s * 0.03;
-  ctx.fillStyle = rgb(dark, 0.35);
-  ctx.beginPath(); ctx.arc(wx + wr * 0.15, wy + wr * 0.2, wr * 1.35, 0, Math.PI * 2); ctx.fill();   // ombre autour
-  const gw = ctx.createRadialGradient(wx - wr * 0.35, wy - wr * 0.35, wr * 0.05, wx, wy, wr);
-  gw.addColorStop(0, '#6b4a3a'); gw.addColorStop(0.6, '#2e1a14'); gw.addColorStop(1, '#170c09');
-  ctx.fillStyle = gw; ctx.beginPath(); ctx.arc(wx, wy, wr, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.75)';
-  ctx.beginPath(); ctx.ellipse(wx - wr * 0.35, wy - wr * 0.4, wr * 0.25, wr * 0.16, -0.6, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
-}
-
-// Longs cheveux noirs qui dépassent du chapeau de chaque côté du visage
-function drawWitchHair(ctx, top, W, H, angle) {
-  ctx.save();
-  ctx.translate(top.x, top.y); ctx.rotate(angle);   // repère : y vers le menton
-  for (const side of [-1, 1]) {
-    ctx.save(); ctx.scale(side, 1);
-    const lock = new Path2D();
-    lock.moveTo(W * 0.42, -H * 0.02);
-    lock.bezierCurveTo(W * 0.66, H * 0.1, W * 0.74, H * 0.45, W * 0.7, H * 0.75);       // bord extérieur
-    lock.bezierCurveTo(W * 0.68, H * 0.98, W * 0.78, H * 1.15, W * 0.72, H * 1.32);
-    lock.lineTo(W * 0.66, H * 1.22); lock.lineTo(W * 0.62, H * 1.36); lock.lineTo(W * 0.56, H * 1.2);   // pointes
-    lock.lineTo(W * 0.5, H * 1.3);
-    lock.bezierCurveTo(W * 0.52, H * 1.0, W * 0.47, H * 0.7, W * 0.5, H * 0.45);        // bord intérieur (le long de la joue)
-    lock.bezierCurveTo(W * 0.52, H * 0.25, W * 0.46, H * 0.08, W * 0.34, H * 0.0);
-    lock.closePath();
-    const g = ctx.createLinearGradient(W * 0.45, 0, W * 0.75, 0);
-    g.addColorStop(0, '#0d0812'); g.addColorStop(0.5, '#2a1d33'); g.addColorStop(1, '#0d0812');
-    ctx.fillStyle = g; ctx.fill(lock);
-    // mèches
-    ctx.save(); ctx.clip(lock);
-    ctx.strokeStyle = 'rgba(150,120,190,.25)'; ctx.lineWidth = W * 0.006;
-    for (let i = 0; i < 7; i++) {
-      const x0 = W * (0.47 + i * 0.035);
-      ctx.beginPath(); ctx.moveTo(x0, 0);
-      ctx.bezierCurveTo(x0 + W * 0.06, H * 0.4, x0 - W * 0.03, H * 0.8, x0 + W * 0.02, H * 1.35);
-      ctx.stroke();
-    }
-    ctx.restore();
-    ctx.restore();
-  }
-  ctx.restore();
-}
 
 // L'appareil photo s'ouvre seulement quand on appuie sur le bouton de l'écran d'accueil.
 </script>
