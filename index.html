@@ -166,6 +166,27 @@
     #result .credit img { height: 6.5vh; }
     #result .credit .tld { font-size: 4.8vh; padding-bottom: .6vh; }
   }
+  /* Fenêtre de consentement avant l'envoi */
+  #consent { position: fixed; inset: 0; z-index: 30; background: rgba(5,2,10,.82); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #consent .box { background: linear-gradient(160deg, #2b0f3a, #12051a); border: 2px solid var(--orange); border-radius: 18px; padding: 22px 20px;
+    max-width: 520px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: 0 0 30px rgba(255,122,26,.35); color: #f4ece0; }
+  #consent h2 { font-family: "Creepster", cursive; font-weight: normal; color: var(--orange); font-size: 26px; margin-bottom: 12px; text-align: center; }
+  #consent p, #consent li { font-size: 15px; line-height: 1.45; }
+  #consent ul { margin: 6px 0 12px 20px; display: grid; gap: 6px; }
+  #consent p + p { margin-top: 10px; }
+  #consent strong { color: #ffd9a8; }
+  #consent .actions { display: grid; gap: 10px; margin-top: 18px; }
+  #consent .actions .btn { width: 100%; font-size: 18px; padding: 15px 12px; }
+  @media (orientation: portrait) {
+    #consent h2 { font-size: 7vw; } #consent p, #consent li { font-size: 3.9vw; }
+    #consent .actions .btn { font-size: 4.8vw; padding: 4vw 3vw; }
+  }
+  @media (orientation: landscape) {
+    #consent .box { max-width: 80vw; }
+    #consent h2 { font-size: 6vh; } #consent p, #consent li { font-size: 3.4vh; }
+    #consent .actions { grid-template-columns: 1fr 1fr; }
+    #consent .actions .btn { font-size: 4vh; padding: 3vh 2vh; }
+  }
 </style>
 </head>
 <body>
@@ -195,6 +216,24 @@
   <div class="ctl"><button class="round" id="switchBtn" aria-label="Retourner la caméra">🔄</button><span>Retourner</span></div>
 </div>
 
+<div id="consent" hidden role="dialog" aria-modal="true" aria-labelledby="consentTitle">
+  <div class="box">
+    <h2 id="consentTitle">📤 Envoyer ta photo aux organisateurs</h2>
+    <p>En envoyant ta photo, tu acceptes que :</p>
+    <ul>
+      <li>elle soit transmise aux organisateurs du <strong class="c-orga"></strong> pour l'album de l'événement ;</li>
+      <li>les organisateurs puissent la <strong>publier sur leurs réseaux sociaux</strong> et leurs supports de communication liés à l'événement (Facebook, Instagram, site internet…) ;</li>
+      <li>elle soit conservée par Defibooth pendant <strong class="c-duree"></strong> maximum, le temps de la remettre aux organisateurs, puis supprimée.</li>
+    </ul>
+    <p>Si des <strong>enfants</strong> apparaissent sur la photo, tu confirmes avoir l'accord de leurs parents.</p>
+    <p>Tu peux demander à tout moment le retrait de ta photo en écrivant à <strong class="c-mail"></strong>.</p>
+    <div class="actions">
+      <button class="btn" id="consentYes">✓ J'accepte et j'envoie</button>
+      <button class="btn secondary" id="consentNo">✕ Je refuse</button>
+    </div>
+  </div>
+</div>
+
 <div id="result">
   <img id="photo" alt="Ta photo">
   <div class="panel">
@@ -202,7 +241,7 @@
     <button class="btn big" id="saveBtn">📥 Enregistrer la photo</button>
     <p class="hint" id="saveHint">Ta photo sera enregistrée sur ton téléphone.</p>
     <button class="btn send" id="sendBtn" hidden>📤 Envoyer aux organisateurs</button>
-    <p class="note" id="sendNote" hidden>Ta photo sera partagée avec les organisateurs pour l'album de l'événement.</p>
+    <p class="note" id="sendNote" hidden>Tu pourras lire les conditions avant de valider l'envoi.</p>
     <div class="row">
       <button class="btn secondary" id="retakeBtn">🔄 Reprendre</button>
       <button class="btn secondary" id="shareBtn" hidden>📤 Partager</button>
@@ -230,6 +269,10 @@ const CONFIG = {
   urlEnvoi: "https://script.google.com/macros/s/AKfycbyDxFbVk5VjKqHWECnpjt9UBWVyByYAZvGKmPpk_ca00UqHjBgMtJnxQuYlUmT2Xwe8/exec",
   // Format des photos : "camera" (3:4 / 4:3, format du téléphone) ou "2:3" (format tirage photo 10x15)
   format: "2:3",
+  // Texte de consentement affiché avant l'envoi aux organisateurs
+  organisateurs: "Marché des Sorcières",
+  conservation: "1 mois",
+  contact: "contact@defibooth.fr",
   cameraParDefaut: "user"   // "user" = selfie, "environment" = caméra arrière
 };
 /* ========================================================= */
@@ -729,13 +772,24 @@ document.getElementById('shutter').onclick = shoot;
 document.getElementById('switchBtn').onclick = switchCamera;
 document.getElementById('retakeBtn').onclick = () => { document.getElementById('result').style.display = 'none'; };
 document.getElementById('saveBtn').onclick = save;
-document.getElementById('sendBtn').onclick = async (e) => {
-  const b = e.currentTarget;
+document.querySelectorAll('#consent .c-orga').forEach(e => e.textContent = CONFIG.organisateurs);
+document.querySelectorAll('#consent .c-duree').forEach(e => e.textContent = CONFIG.conservation);
+document.querySelectorAll('#consent .c-mail').forEach(e => e.textContent = CONFIG.contact);
+const consentEl = document.getElementById('consent');
+document.getElementById('consentNo').onclick = () => {
+  consentEl.hidden = true;
+  const st = document.getElementById('sendStatus');
+  st.hidden = false; st.classList.remove('err'); st.textContent = "Photo non envoyée. Tu peux toujours l'enregistrer sur ton téléphone.";
+};
+document.getElementById('consentYes').onclick = () => { consentEl.hidden = true; doSend(); };
+document.getElementById('sendBtn').onclick = () => { if (lastBlob && !document.getElementById('sendBtn').disabled) consentEl.hidden = false; };
+async function doSend() {
+  const b = document.getElementById('sendBtn');
   if (!lastBlob || b.disabled) return;
   b.disabled = true; b.textContent = '📤 Envoi en cours…';
   await sendPhoto(lastBlob);
   b.textContent = '✓ Envoyée aux organisateurs';
-};
+}
 document.getElementById('shareBtn').onclick = () => { if (lastBlob) share(); };
 
 // L'appareil photo s'ouvre seulement quand on appuie sur le bouton de l'écran d'accueil.
