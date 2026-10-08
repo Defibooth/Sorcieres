@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a0b24">
+<title>Marché des Sorcières</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Creepster&family=Cinzel:wght@600&family=Fredoka:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --orange: #ff7a1a;
+    --orange-glow: #ffb15c;
+    --violet: #2b0f3a;
+    --violet-light: #6b2fa0;
+    --vert: #7dff6a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; width: 100%; background: #0b0510; color: #fff; font-family: "Cinzel", Georgia, serif; overflow: hidden; }
+
+  #stage { position: fixed; inset: 0; }
+  #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #video.mirror { transform: scaleX(-1); }
+  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  #controls {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    padding: 18px 26px calc(22px + env(safe-area-inset-bottom));
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .round {
+    width: 54px; height: 54px; border-radius: 50%; cursor: pointer;
+    border: 2px solid var(--orange); background: rgba(43,15,58,.75); color: #fff; font-size: 22px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ctl { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .ctl span { font-size: 13px; color: #fff; text-shadow: 0 1px 4px #000; font-weight: 600; }
+  .round.on { background: var(--orange); }
+  #shutter {
+    width: 82px; height: 82px; border-radius: 50%; cursor: pointer;
+    border: 4px solid var(--orange); background: radial-gradient(circle at 50% 40%, #3a1450, #12051a);
+    box-shadow: 0 0 18px var(--orange), inset 0 0 12px rgba(255,122,26,.6);
+    font-size: 36px; display: flex; align-items: center; justify-content: center;
+    transition: transform .1s;
+  }
+  #shutter:active { transform: scale(.9); }
+
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 8; }
+  #countdown {
+    position: fixed; inset: 0; z-index: 7; pointer-events: none; display: none;
+    align-items: center; justify-content: center;
+    font-family: "Creepster", cursive; font-size: 170px; color: var(--orange);
+    text-shadow: 0 0 25px #000, 0 0 40px var(--orange);
+  }
+
+  /* Écran résultat : la photo reste en plein écran, les boutons par-dessus en bas */
+  #result { position: fixed; inset: 0; z-index: 10; display: none; background: #000; }
+  #result #photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #result .panel {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    padding: 70px 16px calc(22px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(12,4,18,.97) 0%, rgba(12,4,18,.9) 60%, rgba(12,4,18,0) 100%);
+  }
+  #result .hint { font-size: clamp(17px, 4.6vw, 21px); text-align: center; max-width: 420px; line-height: 1.35; margin: 0; }
+  #result .status { font-size: clamp(18px, 5vw, 22px); font-weight: 600; color: var(--vert); text-align: center; margin: 0; text-shadow: 0 1px 4px #000; }
+  #result .status.err { color: #ff9a9a; }
+  #result .btn { width: 100%; max-width: 440px; font-size: clamp(20px, 5.6vw, 26px); padding: 20px 18px; }
+  #result .btn.big { font-size: clamp(23px, 6.6vw, 30px); padding: 24px 18px; }
+  #result .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 440px; }
+  #result .row .btn { width: 100%; white-space: nowrap; font-size: clamp(18px, 5vw, 24px); padding: 18px 10px; }
+  #result .row.single { grid-template-columns: 1fr; }
+  [hidden] { display: none !important; }
+  #result .credit { display: flex; align-items: center; justify-content: center; gap: 10px; color: #f4ece0; font-size: 16px; text-decoration: none; }
+  #result .credit .brand { display: flex; align-items: flex-end; }
+  #result .credit img { height: 30px; width: auto; display: block; }
+  #result .credit .tld { font-family: "Fredoka", "Arial Rounded MT Bold", sans-serif; font-weight: 600; color: #fff; font-size: 22px; line-height: 1; margin-left: 2px; padding-bottom: 3px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    border: none; border-radius: 40px; padding: 18px 30px; cursor: pointer;
+    font-family: "Cinzel", serif; font-size: 20px; font-weight: 600; letter-spacing: .5px;
+    background: var(--orange); color: #1a0b24; box-shadow: 0 0 14px rgba(255,122,26,.6);
+  }
+  .btn.secondary { background: rgba(43,15,58,.85); color: #fff; border: 3px solid var(--violet-light); box-shadow: none; }
+
+  /* Écran d'accueil */
+  #start {
+    position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 22px; padding: 30px; text-align: center;
+    background: radial-gradient(circle at 50% 18%, #ffe9a8 0 48px, rgba(255,233,168,.15) 50px, transparent 120px),
+                radial-gradient(ellipse at bottom, #4b1a66, #12051a 70%);
+  }
+  #start .icons { font-size: 42px; letter-spacing: 8px; margin-top: 70px; }
+  #start h1 { font-family: "Creepster", cursive; font-weight: normal; font-size: 46px; line-height: 1.05; color: var(--orange); text-shadow: 0 0 18px rgba(255,122,26,.7); }
+  #start .date { font-size: 16px; color: var(--vert); letter-spacing: 2px; }
+  #start .lieu { font-size: 14px; color: #ffe9a8; letter-spacing: 1px; margin-top: -14px; }
+  #start p { font-size: 15px; max-width: 300px; line-height: 1.5; opacity: .9; }
+  #start .info { font-size: 12px; opacity: .7; margin-top: -8px; }
+  #start .err { color: #ff8a8a; font-size: 13px; }
+  #start.hidden { display: none; }
+  /* Mise en page proportionnelle à l'écran du téléphone (fonctionne aussi si le
+     téléphone affiche la « version pour ordinateur ») */
+  @media (orientation: portrait) {
+    #controls { padding: 4.5vw 6.5vw calc(5.6vw + env(safe-area-inset-bottom)); }
+    .ctl { gap: 1.4vw; }
+    .ctl span { font-size: 3.4vw; }
+    .round { width: 15vw; height: 15vw; font-size: 5.8vw; border-width: .6vw; }
+    #shutter { width: 21vw; height: 21vw; font-size: 9.4vw; border-width: 1vw; }
+    #countdown { font-size: 44vw; }
+    #start { gap: 5.6vw; padding: 7.7vw; }
+    #start .icons { font-size: 10.8vw; margin-top: 18vw; }
+    #start h1 { font-size: 11.8vw; }
+    #start .date { font-size: 4.3vw; }
+    #start .lieu { font-size: 3.8vw; margin-top: -3.6vw; }
+    #start p { font-size: 4vw; max-width: 80vw; }
+    #start .info { font-size: 3.2vw; }
+    #start .err { font-size: 3.4vw; }
+    #start .btn { font-size: 5.2vw; padding: 4.6vw 7.5vw; border-radius: 10vw; }
+    #result .panel { gap: 3.4vw; padding: 18vw 4vw calc(5.6vw + env(safe-area-inset-bottom)); }
+    #result .hint { font-size: 4.6vw; max-width: none; }
+    #result .status { font-size: 5.2vw; }
+    #result .btn { max-width: none; font-size: 5.8vw; padding: 5vw 4vw; border-radius: 10vw; border-width: .8vw; }
+    #result .btn.big { font-size: 7vw; padding: 6vw 4vw; }
+    #result .row { max-width: none; gap: 3vw; }
+    #result .row .btn { font-size: 5.2vw; padding: 4.6vw 2.5vw; }
+    #result .credit { font-size: 4vw; gap: 2.6vw; }
+    #result .credit img { height: 8vw; }
+    #result .credit .tld { font-size: 5.8vw; padding-bottom: .8vw; }
+  }
+  /* Téléphone tourné en paysage : boutons sur le côté droit */
+  @media (orientation: landscape) {
+    #controls { top: 0; bottom: 0; left: auto; right: 0; flex-direction: column; justify-content: space-evenly;
+      padding: 3vh calc(4vh + env(safe-area-inset-right)) 3vh 3vh; }
+    .ctl { gap: 1.2vh; }
+    .ctl span { font-size: 3.4vh; }
+    .round { width: 14vh; height: 14vh; font-size: 5.8vh; border-width: .6vh; }
+    #shutter { width: 21vh; height: 21vh; font-size: 9.4vh; border-width: 1vh; }
+    #countdown { font-size: 44vh; }
+    #start { gap: 3vh; padding: 5vh 8vw; overflow-y: auto; }
+    #start .icons { font-size: 8vh; margin-top: 0; }
+    #start h1 { font-size: 9vh; white-space: nowrap; }
+    #start .date { font-size: 4vh; }
+    #start .lieu { font-size: 3.6vh; margin-top: -2vh; }
+    #start p { font-size: 3.6vh; max-width: 70vw; }
+    #start .info { font-size: 3vh; }
+    #start .btn { font-size: 5vh; padding: 3.4vh 6vh; border-radius: 10vh; }
+    #result .panel { left: auto; top: 0; bottom: 0; right: 0; width: 46vw; justify-content: center; gap: 2.6vh;
+      padding: 4vh calc(4vh + env(safe-area-inset-right)) 4vh 9vw;
+      background: linear-gradient(to left, rgba(12,4,18,.97) 0%, rgba(12,4,18,.9) 65%, rgba(12,4,18,0) 100%); }
+    #result .hint { font-size: 3.6vh; max-width: none; }
+    #result .status { font-size: 4.2vh; }
+    #result .btn { max-width: none; font-size: 5vh; padding: 3.2vh 3vh; border-radius: 10vh; border-width: .7vh; }
+    #result .btn.big { font-size: 6vh; padding: 4vh 3vh; }
+    #result .row { max-width: none; gap: 2vh; }
+    #result .row .btn { font-size: 4.4vh; padding: 3vh 1.5vh; }
+    #result .credit { font-size: 3.4vh; gap: 1.6vh; }
+    #result .credit img { height: 6.5vh; }
+    #result .credit .tld { font-size: 4.8vh; padding-bottom: .6vh; }
+  }
+</style>
+</head>
+<body>
+
+<div id="start">
+  <div class="icons">🦇🌙🦇</div>
+  <h1 id="startTitle">Marché des Sorcières</h1>
+  <div class="date" id="startDate"></div>
+  <div class="lieu" id="startLieu"></div>
+  <p>Autorise l'appareil photo et viens prendre ta photo ensorcelée…</p>
+  <p class="info" id="startInfo" hidden>Tes photos sont aussi envoyées aux organisateurs pour l'album de l'événement.</p>
+  <button class="btn" id="startBtn">🧙 Ouvrir l'appareil photo</button>
+  <p class="err" id="startErr"></p>
+</div>
+
+<div id="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+
+<div id="countdown"></div>
+<div id="flash"></div>
+
+<div id="controls">
+  <div class="ctl" aria-hidden="true" style="visibility:hidden"><span class="round"></span><span>Retourner</span></div>
+  <button id="shutter" aria-label="Prendre la photo">🎃</button>
+  <div class="ctl"><button class="round" id="switchBtn" aria-label="Retourner la caméra">🔄</button><span>Retourner</span></div>
+</div>
+
+<div id="result">
+  <img id="photo" alt="Ta photo">
+  <div class="panel">
+    <p class="status" id="sendStatus" hidden></p>
+    <button class="btn big" id="saveBtn">📥 Enregistrer la photo</button>
+    <p class="hint" id="saveHint">Ta photo sera enregistrée sur ton téléphone.</p>
+    <div class="row">
+      <button class="btn secondary" id="retakeBtn">🔄 Reprendre</button>
+      <button class="btn secondary" id="shareBtn" hidden>📤 Partager</button>
+    </div>
+    <a class="credit" href="https://defibooth.fr" target="_blank" rel="noopener">
+      <span>Photo offerte par</span>
+      <span class="brand"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAArgAAACfCAYAAAAS9qqIAABGoUlEQVR42u2deZwkRZXHv1VTPTcwMzAoconcLCKgotyIByiyqIgHyILoCrLIuasil4IoyCWKByqIKCLihYsC4sEhcogygIByCXLPcM/VM11dtX+8F1vRSVV1VUZkVlb1+30++emZ7qrIyMiIF7/34h2ler2OwTABUAImAVUbCoPBYDAYBhtlGwLDBEAFqCu5rdhwGAwGg8FgBNdg6GdiW1JiOxP4E/Blm/sGg8FgMBjBNRj6cV6XldjWgaOBhcCrgS/q38w3x2AwGAyGAYUd1xoGldgCvBv4ITAV+CvwWv19yQiuwWAwGAyDTQgMhn5HSZW1mpLbHYD7gZ8pub1EyW3ZyK3BYDAYDEZwDYaiww8g2xS4GbgWWFf//hXgA97njNwaDAaDwWAE12Ao7Nx1AWSrAD8C7gS28j5zInAYMASMGrk1GAwGg8EIrsFQRPjuCHXgs8AC4P2Jzx0NnKCfHTFyazAYDAbDBCILVujB0EeoMDaA7CctlLSjgDMRy+2IDZvBYDAYDBMLZsE19Ms8de4I6wE3IgFkRm4NBoPBYDAYwTX0FZLuCKcA9wFvbPH5I4zcGgwGg8FgKJKLgiMyKJmZQiM4aNj7XM1e24SA746wM3AV7fM2Hwh8y8itwWAwGAyGIhR6KAHTkHylw9qnYSW2Jf05ST/j2PgosBQLHBpIpYtGYNg04Lu8NIAsif2AC43cGgwGg8FggGJYcMvAisDzXXx+BmLhfRFYbq9xoBQuZ7V9H1KgYTzsilh3jdwaDAaDwWAoDMEtKVkdTkGMZyBW3EX2KgeG3K4A/FiJ63jYFLjLyK3BYDAYDIYkSSwCwZ2c4ns1YKH+nGmvsn+VLJ2HVWAXxCrfCbnd1sitwWAwGAyGohLcMuJ/mxZL9Odke519Of/qqqScDlzZ4fe2B/5Ew1fXYDAYDAaD4f9RhCAzlwIqBIuAWYgV0LIs9M/cqyLW9xuAzTr83puBP2KWW4PBYDAYDC1QHqA+OLJkKD6G9H1tiriZdEpu9wB+b+TWYDAYDAZD0QnuqP5cBUkLtQListCty8Fi/Vmy11pYlDxy+h7gzi6+uz/wSyO3BoPBYDAY+oHg1oEFSJqwYY+oTkfSh5W6aKeO5Mw1FJPclpScHg/8tIvvHgl8z8itwWAwGAyGjkhHgSqZNYOz5L7YxefLNALPDMVRpJxv9KXAe7v47onACUZuDQaDwWAwdIpKwfs3rMTGLwDQDjX9vKFYc6yKuJ/cCmzSxXfPMXJrMBgMBoNh0AguwDIaQUmdEFwr31s8crsm8GCX8+0HwCeM3BoMBoPBYOgW5T7pZ6d+uFV9Jgs06z2cUvI64F9dkttfAft2odgYDAaDwWAw9B3B7cYqa0FmxSC3LlPCn7v87k3AO2lYf80ibzAYDAaDYeAI7gjdWfGMEPUOJRrVxY6gu0wJIG4M2+i8HLV3aTAYDAaDYVAJbh0r4NAv5LakysiXgTO7/P5iYGPvnRu5NRgMBoPBkAqVPulnN5kRzP+2d+S2BvwY2CtFG2sill/XjsFgMBgMBsNAE9xuYJa/fOHnuL0BcTHoFq8Enku0ZTAYDAaDwWAEVzFsJDd3cjsd+BuwToo2tgQepvNcxwaDwWAwGAwTiuBW7JXmOtZVYBbwKDAjRRt7ALcZuTUYDAaDwRAT/ZImrFPyM4RUzDLkQ25XR1wL0pDbTwG/xHLdGgwGg8FgmIAEtwQs6vLz/k9DNuR2HcRymwYXA1/CqpQZDAaDwWCYoAR3Ev1jaZ4o5HZDJGdtGtwH7G3k1mAwGAwGw0QmuBU6960dpXHcbYFm2ZDbTYG/B7TzWp135pZgMBgMBoNhwhJc6NzdoAostdeaGbl9DXBnQDubAAtNATEYDAaDwTDRCW6tCzJUxyyDWZHbVwPzAtp5D3CPtme5bg0Gg8FgMEx4gru8w8+W6K7qmaFzcntHQDunAj/HMiYYDAaDwWDIAaV6vfAnxX4Z2PHg0oS9aK82GrndkDCf25uArbGgMoPBYDAYDEZwxxBc6NxNYQUlUuNZfetN/l3Wq4Rkb3Dkupwg29CZ9Xt5gtQNAZORtGc1intU7yqUrQvcH9jWFCXKdczv1mAwGAwGQw7ol8pfpS7I0SJgKlJ8oJ54RufPO+r9rHlXXX+W9W9JMtttjt1qot9Vj+hO03stpliWTUduV4tAbjdQkl82cmswGAwGg8EI7tg+Vug8O0Kd9JkU6h7JzQrOsrwUsebOVlK+pEDkdjbweGBb70dy3loZXoPBYDAYDLkTmqLDuQsMIpYD8/X5phVgnNF+PBTY1vnAj7GgMoPBYDAYDL0gNX3ig7sCgx84Nhux6g73aIydG8h9iO9tWjwBvMIjt+aaYDAYDAaDIVf0g4tCnUbw1yDnT30BmAMsy5kUOgt5FbgukNwCbKltGrk1GPJbw2S83vwA26R8Tvaj2WdMFhgMBiO4TTCMROMPcpWymj7nDMQnN885MAJ8H9g+sK23A09ifreGiUUuXaYVdwpSa0Hq/OwsoQpg2ZMb9cTvXZBsTFLZCUk1Emsw9AfKKdd+qZ/Wej8R3FmIdXOQrbiL9TlLOU0gl5v2s8CHAts6B7gyJ3Lbyi+7lmLxdquEmDXK4BPJKp0HpiYrLaZZK6XEXK8g7k114Hltz18HseTlHMT1aIr2YRkSQ7Bc713SvkxOrL8q8AwSa2AwGIqBtHKhr/a+fvDB9cnYLBXig1wwYKa3cWSt3FSBfYELA9t6HFhd2xxlYhDAim7qo0Z6Jwx8dx7/d5sAbwBejxRGWQuYC6yY2FCeBu4F/oAEYj7UpTLrE9Z3Ax9DTl1meAryH4Ef6lUNJLmub2UltCEGEUsVaDAUQzGvAWcAH1R5NoVGetQqjRSpdf3bCp7SugTYHfg9feA22k8E17dWjCDH+IN4DD5Ed2nRQsjtNsANEdpbAwkuI+MJ7xbdmsC3EIvSLN3gnWXJVb1zxT6WICcA7lqqVzWx6Ms6Lm4hV/W7zymBfwh4GPgH8FiLMWUCEfyJujE4vAM4GNgtoM2TgWM73CjcZ1YBfgrsMM7nnwIOAH4dsBG59TYUQeGeo2upZOvDYOgpvxhBTlTmpmzjMOAr9IErYqXPXk4VWICksppOw9dsmf59ZACEZ0kn4dKMNgOnpa0RidzurYQvj8nurGd7Abv2+D3dBlwN/Ar4c0IhMbI7WHBzuwQcBZwWqd1jgLsRa2s7EuqUtjWAO1TJHw8v07n5OcQFKWR9xtgnZirBNRgMvcfzAQS3b9ZxpU9fjrPCOYvbZBom9pn6c6ESX+cT5oI7msEv8FDziMkQUhXNDyLxMUKjQMMU7U8dOSqcpPeueuS8k5K15QzfS8l77/+I0N4vgIs9rTAvvKoAc3ALvT6p/78F+A7wc+Qo2l9jRnT7V9l0AWF76HyPjf8ah+C6PkwBru2Q3Po4Qds+nvSW3BjyqGLTyWAoDELiVJYZwc0Hjjz6x2fDjLV8Dge2v7QJQfSJMU364D5bS2woK3ntLm6x2dS8tuoZvO8RxAdweoT2PkhvjileXsC5uJVe31KyeyrwM29sjOj2H7l1yugFwH4Z3WfFDvpR0/mUVrE7DvgLcFlKkhuj0I5lVTEYBgN9Q3DLA/oC6hm261/tsBzxE3a+n8sR0/5zOkGmIxbeZhteFgFmjtyeyvj+e53gjfpctR6QttkFn39bIX6SdeBExE/YWe/NktUf5BbkZOKODMkttPe1d2R0PeDQwPtchASL1Gl9kjXeeEyITdFgMPSEXxnBHRA48ltJEJ5pSoRiE1xnZf13GkfqITgDuFkJQC+iKKf20bs+TpWas5VgVG3tFZ7cTtLrLuDVGd/vmQ7k8+ER7jMD+E/dnCalGJNQDNvUMhgMRnAnDpbScBUoK3F7IYN3XAXWQY4oQ/Ei8N/0NoKy1Ifv+lAdu8/o/2s0Uo0ZigMXyHg5sH4O93u6zRwfVSXyvZHu9TGv3bz3iRGbWgZDYVDr0XeN4E4guMC2FRDXhIXENf+74Lgh4G+R2nwDDb/AXh1V9LM/38nIce3ONNwWbB0WA05p+ySwS073fGwc+bAGkhEhBjZE/NfTuCkYwTUYDH3FG21j7T0W6WazOAPi5jbsnxEnqOxE4O+IlauXWtySPn/nk4HfAT+mkQHEfHN7LwtHEavtqTne919tlFNoBKbGwjqJ9vNCzaaYwTBmfTsDVIVG/vt+MQQYwTV0jBeJb+FwQWWHA++M0N4zSMqhIiR3Xjog730vxJq7nY6puSz0FnUkZVeeWNCmLyCnOjExzfYagyG3Oe8IbMUjsq6qnzvBrepenWd8RsjpqxFcQ1NtrZTje60i0fxnRWpzexquCb3G0gGbH9cDn8cC0HopB2vAtsDrcr63S5pea7IBlYBH2pDgNJhve43BkAtqHoGtekS2hsTbrIFUE/04cB4S1FqnkeWoqGumbwiuHYtmS2pdtHKzsrBZ5UR1JHoFJNNBDJwO3EP+BR0mCsEFqWq1M7ATkkWj8HW+B5DgntKDe7c7DZmkc+HbNIITQ+/1T49AGwyGbDAEvBJYHSktvz6wCbAxsC5SuKVfedmQEVwjtlVv8xpCKqyNID63tcTGGhPu3r+J1N4oEnRTpLrTywd07myNZNF4FfAEfVDre0DWaxVYFXEViYkFwCU0qgbO0Q1vrq79u4B5bQjnqPbvNKT++4zA/vyCRnrCvOeVWXANEwFube0C/G/KNopu2JhiBNeI7cuBvYH9GZtLcwHwTeBLGWw2rq3jkUIMMbAdDV+holh9Bjmn5lTgcWAD4D7Mkps13Jp9V8Q2nwHeA1zXxXfqLX5XRurG7wL8MbBfX0i5gcaYf+ZbbphICFkzRedlfZOH3rTqeONY141yfeCXiAXuDF6aKH4ukvx/oW6C1UgT2vndbgd8LtJzXQLcpP0rEsmaCFbNe4GNsAwLeSimRCS4VwGrKLl1KfqSQSZD3u/HI341becGwlKXnQvcllJhqkccZ4NhIhDbFwtOcEPW45R+WdNGcMPhyN8Q8DUlJrt3+N2fKhkNJbm+3+31EZ/tozT8hQdFO+4n3AOsrfPD1mq2ytI2kZSSXWlETtdoREf7QSYj3u/rHc73CuJ2tLHOi25wB5JNpZySrMYguDZ/DRMJIbEqU3NYMyFt942LQj8IHZcrzs8X1+pyVpJyTtqFs5pugfiFHpyijeOBY7WdtM7bLi/tryM+236IC0XaTTFLTKQAmYdo5DA2K1h82VLXdRcj3+ybvXcU+5TBKTl/R4JVDqV9mV+HW5EMKMM0UhMZDIZ8FOc0yCOVX8heMtkIbvpB95Meuw3IT7cx0uZyVhLfX9Q/JoxJfN1R3y7AXwPbOgn4oD5Dt5Zc53d7MPGCZB4GLqS4QU4xNukXdV5M0Z+TvWsaYg2fjVSR2gh4C3AQcI6Shjxxo861SbZvZIIYlcLOAx4lW3eemiezv4r4+e8J/BzJp+xjOXI69Hqd66WAdRPjBGfUppnB0BHy8HGN4aJQeBTBt6/skcVaE0I1FTmmddHHcxBry3Td8OtIZauFwLNIbffHlaS96LXb7LnTpupym8Uc4MpI4/BD5CjxLjr3k3PuA+sh7hGxsBvFyXmbFWa2Ie/J46X5SCT87xK/3xxxRzkEicLPCpshVeSOxzIrxBbydcRnNhSna3tZE7laQrH9mV7TgC2R3JpPq1K0xNvIzHJrMOSHEGPE9II/mxHcDojZJBpJj53QXh1JtP5WxCduiwj3egAJlLoOuFaJSjUC2a0TP13V35BUQMsZ/zjRuW5UCY+u9vF9JdlFJlK1SHOwUy22lPiOCyicp9dJwGuRYg27ZvTMxwGX6hyxzApxEeqe8ALiOpCnUlilkbmlhuSGvqGJfI+xhmOQY7PgGiYSQnLFzkzsO1lxsIEnuHm7KFS8zdlZyXYCvoP4ez6K5Gr8r0jkFiSp8j5IFPHfVVhfB3wYsQg7twbni9fJpKrrsyxCjiZj4nI6Czpz6Y1OJs4Rq8MhFDOwLPaGi6dEjHclXWT8imNuTv8FeDviHzkvo+e+lkbqKEM8+TcrsJ0re2QwcIpWjbF17Z0iFktBjUHaq5HXrsFQZIT40c7MoX8h5Hkocj8yq/Ka10ZZ8QRuTcnrhSrs/gB8hPAk5t1ge+B85Oj5Lr3/NCUvdTpL3zOq4/cJ4lpy34QEkLTzx3WW202JU+HI4TDEraOIgWWxN1x/oZYC+uHmtCMX9+j8/mgGzz0bOJJ4qeViCqhmabD84M+8Aj/TIJTg3lwA8lZPzMf6gK5Zg6EflOYQN4MVC/6MkwPGxt8PnNzyT6v9z5RivYwsX7YjY3XgfcC/kKCsfQvysjZBLMhLgAsQi2/VI7rtNhSQo8F1I/fpbCQdUKv0UO53v494zyoSuNIPPp6xNu+Yzvw1731VEMv+Bhk8+xlKdGs9IoxJS6ETTs3SYPnBn450lRMCrtfkHOQkJwT3DDiJq/f4HZWbKFCVAs2jLBTGcuIqMXGyqPjvu1nu6KIrzBBmsFspp3mWFkNd3seR1VpiP3DGhbkeqfc/082pelNkaQXyidJeSh6L7jy9n15XAwciddvLtPaHdZa7R5Hyqg9G7MuNSmSS93fjenSEjdnHO+mf48NY/ZyCBCfGhHNnGEIqka2o8yOmVn6Kzs88lZGksuoE1DQksGlDYC0kYGtFxIVmCVKF61EkR+x9NAI/nfCbRPpgz06Fa3LO1BJkYs3A+zw84IQjb7lQ9uZFLTHf2u03tT5TMtz8d379/jqop/hOP5P6SZ6hpZv3WPaUnCKNxQoB352e0xrLkjf6+4XbozZGgrLfCuxAc0vwM0i+758gpY5HmvDJnhJct2lUgX9DUtis32cL7q1KVk9AotfdC6u1Ibn/1I3+0Uh9WAmJzD7Ke7nON3ZtGmU3Y+BOpALTRIvQH8qwbedishAJnnyeeGm+PoYEnS0gLP1TN4Kw5s317YA9gLchbjLd4AHgV0jWkJu9+ZbF3KvTPuG6cy3aJPA+CzxLQ72LvlUjzdV6C8tMvSCkb5HXt/GIWy3R57n6fv4NOSmbpb9/EYmp+AuSts+fR0UmfUkyV21CbuYifpiTPVmySDf/hU2+E5oVqJfj0Cx70vp6baJ76hx9xiW61u5HgsXvRdwMa4l1MprDnB9qsf7cu3hFQNszaVioxyOi/t+L8P6T+8U6SFzPYR3ufysjKVM/qP//JpI9aAHtjY25ENyKZ+E5DfjvDAZwGHhOfzqBMJtskg9/Dng3sK0urvFI7mPEteQeiWQ1uJ2xPiuXRn7OveivtGCx+pl1vkGnlCxSpeTRiG2fiOTlzUopKTPWcvZGvd9+ge2ui/iYu0IFpyC5hYc95bgWoe81tRK8X8d9IZLt4AVVNl4EFuv/dwi839M5zPkR+hfzxyG4lQTZ2xzYH/gPle2d4Aeq9N+TocIUg9D5z7kCEnOxA7Aj4rs/HgmoIS5+1yIuatfo3kSfEXx/HNbUffYDwNYp+MAvgB/zUotflsrdSBuZH7q3TNZ+dxLbUwt4D1m9V5DkAV9C8nCH4CC9jkOyFEEXWYRK9Xq0deAEyivVMhOaF/SfiFXxRl3QjzL2eLPZprYikvx8bSSzwHpI2rG3RyBUjqC0E5zub1vRCDwJxVP6TEO6qN6N5L2MhR+pttQP1lvXx+NoWNZDsJFaArJOu+X6vQvx8ia7DXJxEytCTEG1lwqWDTJ+t0cAX45ETtz3/xP4Vg7z8nu6obm83Mt1411GIyBwCo30OsOIu8ZXPGJfb/Eu6vqev6A/XXuTeWlRHLfxLkVygs9XwncZ6QJh3f2naptpcZMSl+R79clYGXG7OUmtOGlxGZIh57mCyLTkeloRyepzEJLfOgZuVCXxUgKPdHMch+mqxBylRqGY+9kpahTKivCXdO2uosrtC8pNhvV+KyHGvbSuBguQeKXp2vdkSW/nxjEVsfbP1j5coeu+3UmJmxePA6ul7N9PdF9wnKSSILbfIX5cEojh8I06Ph3N7xgE15+47wMuCWjrPOBi4Po2ArmU0HKdj1bS8rO3WgC2Jp7/43rIEWu7wXUv/d9V2MbAUcCZuqktizxp5uji6IcynrEJ7iZKAPLIK+vmxQ90g4uBT+jGFmsz89vZVcnhmjm+33/pfe8JfCb3PjdEjrGLilcAT7TZkNxzbIq4EaXFasCTdO/OEovgXga8y1sDSbJzKBJYGxMfAi6itxZNX66srjLrgIzv+QXgi8ipUVGKfPjjsIrK70Mzvuc84OOqXGVB+Iu4Vx4MfIPOjHBPkj696KXK9ZyluYoY4S5Wgps1NlcFZtx3GhqB6vvbnp6S3F6srLyEpFb6nZLbZiV2/ST77nIBCc5N4Hj9zEVqMYsZ3HM/4gvWLk3TiPb7l0pMY+AMJaLvjDxRjlNLR9HTgmVJmPOCmzMHRWzzaE/Ji0VuV0eOPq/ImdyCBKndrSQgJBVa3bOEFBnDXSihedynnZwPwTOJeeZk+J7677MzGNsfILnPq/QmA4E7Iq8AZyGnfwfkcN/PIO44h3tGi16mFPTH4Yu6Jg/N4b6bI5btaxE/XidPBjkTxaKc1rSzVLtsB/+pivpOOT3nPKSw0rh7RAjB9X30rkxB5o5ATPB7I8f5pQSZTaaUSFoYk1F6+6qm/rmMB/dv3uAOjUNyz1RBGwMPAj+N/CynUPyiDllqz5N60OdFOvdj4BXIqUItYC37Sup+uhG/qcfv9zydm6Gb0vMFn8fjrbtYhSiKQORLnhL1cuAW5KgzS3xMDSY1GpkHsoZfYfLNuhcc3oMxPws5EVmX3uTN9uXKHjoOn+7BOOwAPEIjf3hooZwiE+RaTs+x3DOG/IV83MCSuBUJRKy2e59pX7Q7cpgOPIRYSrsROiXE326pEsEyY6vyjFei1ncg3xPxO7kw58Hd0SOyrUhuRYl3jKCz2Lnx9vYmx0StLpS30HfFQb4esc33BaxlPyr1+0gqv6LgU8hxWzWFItLMZamfFbWVA+8z1OPnnKzPulTlzhOEB590ip0Rl7dqDiS35BGN04Hf9njc10ROHT+YM8n15cqPkSCwXuMMxKK7Ag2L8qChnNFnmxkO9lDFYcsePu+9jFPWOM1DOnI5F/HdXLvD752q9/s2Y5P/jnSxEfnHW9sg+Sd/QueRtjFxDeLjO0JrK9Oo/v4NBVsIzyCuIc7SMFGRd5L4um6yy5EI0xjYP4KSejvis1g0HKSKcMjmXGSS2ynZmhWBYPb6OSvISd9FPbj/dkqy0ihL3TyjW983EM89LQZ+iLju5UFyfX7wNBKMVBS8EQkG25hiVYPst/3sqIIoLSA1C2qt1nU5xeStIsce8zucII8hEdifbkJS610IjyH9zirAr1WIrBVhgJ5Vsno+cDJwDOKb+mUk7chjbb77PSXurfy8nMB7GjmuKgr2ZOJUxYlBMGLCHUt/I1J769OIru/0eRy5nY1kK9mswO/oMCQiuZ1LUCtlohdKTBYIrU0/ucfr5CNqCNilh2O4B+ID2u086mZ8piOnddsUcA59DrFiZvH8rfjBygVdT3cjrguDRnIn5bimi6S0fKTVu+zm5Tpr38Y6QTrBuTSCalwEbTWl8BhBfAQvCByQ+UpmL0f8RzoJwJimBPVgXppy7JNKEN6eIA8OTqD8HgmmOKzHE+IOxPG+n4s69HNJVOcv+5AqT6tHaHNjxKexkyh595npSLaCVftgzE5TmfPrDuete8aik9tO+zcj8D7TE+OSVT+Ljk8jx9S/jCj/St5eeh9hCf6zxpGIm8ixGch/xw/W03EoOq5FYg2uYXAKHE1EgguSluxniEfBGBlX7mLyuqoUnZJbl6DXBY6NpFw0rrM/CSS3pyPWrpch0ec3KLl12Rr8Otd+/euyCoXLgXeoVpo8Xt4Vcehfkeb+PU67OBw5Iukl/oP+KuqQJUo9FEQlxO81Bt7Q4Xr2y3zeSPo0Mb3Ar1QZGO1CbhW9NHinBoZQi9vUPl0nWeAyJG1aSGBmcj3VkbiMV/TB8x+DRL3HtF46UjGnT8itwx+QPPnVLubCoMSrlBksnE0TV4Vyl5O302CpAxDr7WQagWNpXkAN8T97CjlW7xYvIL6FJeB/EIf7skdc/WwNzrrsLve7Go3I2Ari0vApJOjre9691tT7rdNEePgVoXbq8YK+nUZaNUNv4PJyXhGpvdd2SERc7tHzieuW8DCSLeRkpLz1GYh7zzORx+1yurPMThsQghtKRKbYkhuDayMRXLeeLqDYbj5JfAtxo6gSl+T/rQ/nwp9V4akPgCLXTeWzQXNR3LeZAaRTiw80SiCOhxOA7yq5XZ6ys47czkXytM5N0cb+So4v8jYJn9COl62BJgTV+TkOIZbY/ZHyivO9zz4IvKYJyXWW3duIX2q3U3yMwbDe1gvWTtr7zovU3iYdPI87htub8HK7DqcjVYheqQLmWCSZ/X8jhU5WQfzvTyA8FytIbstDutiYB8WCGxoYFWoBHrTNcH0aft2VgHdXRYq27NeHY3ADjeDFkPfrSP6PSF8Zq9e4zXuWfp7rzzCx8TkacU8dEVy3iC+lM1+93+sGNxRAbt0EWyFBHDvF1/QBv0fD6grdBbWNR05GPKI7Dznq9d0W5tE8EbGzBh/Zg5d/BWLBNuttMQhuSZWkGL5fr0xo583WVA3JPxojiv0WJHn6/yBBam6dDTHW3aeEHFmeqGQzhv/5V1XhbWdxcb+fWvD5V8lpnoYS5PIArv3T6N7lJbmeViNenvNe4Fe0iUDvguS/X69+xcuQ1I1ZZtnIA0+Msw/0ck0vz+EeH0FO7f4/4Lo8zuQd0S914h4wCryVRmnEZn6tZTo7Rq2Rzrr1BsTC46q31MjOedwRXVdw4lNIOhqHWxGLk29tcsLkUSRlTp74BIPjeztasHZCSMcDEdqa2yHBvSDCvb6v6+wxXd8lb52NMNbdx5FQlznlK4ifYugzn5HU1FtgqODzeFqCkBdxnnbSv37FL1IqD26P+mmfP/82NPxx05L8uYj1tt9xkMq1Tqz6RV0PL3ShEGf5DPco39jU43xT9Oc0JLjv+xnd+13+3lBuw+5HEX/S73TY8K7exGjl1+rcAsoJK09SI7wQOfrsFNcjLhG3aLt18ouKdAUnhpBjn+mIryvI0UfSv8dZcfOs6nKVkopBsd7WI767XpOGxyK3V2qiqNYQ3+/QNE3/iwQp+oGj9Q7eVdUjnE8gkdZ/DujHviqbxrO+FT0FUKfZEUZ63M9BJbiv032rG39ct0e9A9h6AMbgWzROZ7t5z24v+dEAzYcrutgX7ixg/0tdvMcs1vTliEvaJsA5wF0e93HXMI0aArP1OzFxSCcbgEv58ZcuGr7a+/dy4Ekks8ADSOaFv+u/7+WlxR2cJWg5Yi3et4v7no1kJyiRPltDDDhr7lKkes6RiKXpca9veML0diSSPQ8heTiDlTlhEAiuw4JI7UxqodS5ZzwvsP3ngPfQOKGpB6yROrAtEjyatkjLCYgPfDOlzfXt+Zze4ePIac1klWUz9JqGuEm4IK/FOgar6P/v7nAeLuvxHM3jOPNh3ezuQCxRkxE3mB3JNn/uZXTnyuIMFBdn2Ce3Zy7QubwqsBHiO5wFLlDC3mlVS8cPdtK9LkvcqJxhmcqKTZG0iFlgNvBhJIaoXeqwOhJUWNJ17gx1k3SNf4jw8rXvRU6xF6u8reoYOKNCrck7Ge3hvrYt8KcEr3TGv3qCWLuxeh7YXfnJWZH6sY3KjhGgVGmjoZ4VsPlMRoowrMXYY3t/s/ydConLafhnlOiuPvnBSMJ8t+n2mrDUvJd3JnAdYqlyRNZfNCUl8vdn3KebVLkYlFx/MRdwEQhurHdSarER1ZQgvCqw/V1pHN/VA8fcKaI70wjw6Bb7AUeoLEnmd3X/fkjXorOUTlEyM1XJ5+pIqcmTA8fm0YiKSjMsZ3BxKuJX3eok44v6883AKYjVNSYmqxy+sAMZ6fucrhi5H+cgcSPz2vShovP1AODAiPd+O3I8f3OX+0RW/sffRGJp/tZG1r0B8en/QOR7n48cn4/nFuRkzqImf7smsA+fpHv3l273slhK64PAvyGWWVeMqzqOcarucaUKUlSLiCR3Q8TCXi630My2UVadFWarhvJT1UpcjtkTumjjfUpu3aAWJT+dO5IdQvxwV9Ln3ZeGr5PzxX1ABVuWOILBy3s7SAQ3VgqndgL5C4FtX4q4/8RSklxGkXk03HnSYB/9OWmcey3U62klo/erALxSx+aOwOd5UdfYZBqnNe5KxiD4v+sUg+iicAWSU/zTSm4rba6SGkRej1gNY/skn9fBGvLlxZkR7/0p3Ss+oftFtc04VHUdHqT7yrkR+/GdDmWi2792Ik6RGh9f0+f6uJLbUotxqKvh5oOIT/9lkfvxbhpxPO32+VLiqkTaa5+iEbRb6uLKG/MRd7NlNGK2uuFhLo5pspLcWO/RVRIcQ3D9coM35DxQuyERnZ0S3L110x0qgPBvtymVdfPbiEZgTc37mfVR11MqCIzgFpfgrpLRs7h3vqFafUJwlLexlQKuZP9KSHWytPhYB++xWT8c0ZysgnmlwPF5wbNMOOuEu5IxCLUOrByDTnAPVIPGs94mXm1z1T3F4Fp9b1dH7E8FOaFoR2rc/H8dcQo63Irklv+SZxApjzMWbu66NJUHEc99Y1Mk8894/sjubydFHP9nEb/NQ/S53FjUOxiHJ5DAovdF7M9nO9wf6olr1PsZKk+qTdof78p7Tb/aayvE8DGi627vSO9vC9cvfyI7X7bfFpzcHKekcGqByS0JEgsN/5Tk324kTo7QZjgsIZQGBf2eB9e/95oR2lriCZq6t2kDfDSw7R8Aj3jErR5wJYXrJBqpbdIK2FUT62y8TagZAQ1dHwsznivLI8ihEMSUH+9E/BMdse3U6uPelbPgvY24R+THdzgGh0e41wWINfo5b512kpvdzV2XpnIy8BslpzGJXbkNKaqqUr5dpHtej1jy70nMiVqX43Ap4gcfA5sg1ulaSiIYSh7z2JdKEdbLfBpBzDGed0kH67ATbJBctO744wiKHxnqSgEOU/woaTzrw+Qmk8ppqYdndO8fR9CuBpng9ir9UsmzRKwbob3Hmggt984/HNj240hO6hmqVLpAqmZXq6PVZHpAdzRVRYKLQrCTR5bTIlSODGc8X0YKsl5C8VHkpG4y3R9nJuf1EOL2dU2kvm2NuJJVW2z+LvXlPoH3uUTX5FCgbK6r4jOERKtvH0n5mNVmDNwa2zPSmP8R2IHGiUqaOeGPw+3E89HeK4VcKUVSCPshF+85kbnFqLb31QhtOdeZuptYo0g+uzP7YGB/hERVrkfcetpZERmn4Sz3Fm/Je6llwiPcW2lYdfpDCegWsVwLqj0mALMjtXNvQjA6xWkjtY6E4JPIseFCJEPIMp3Lza6RFpcLAB1Gjt8e0z5fj/jRh+BNARYJN48mRyK4Wc2jUAturwtFgJxgnUdYhUv/eZzsj5lh4S0tntetp9cHtv8MEhTlDEox5suIkrs/IkF4oditg3e+T4T7LNG16yzytUjj8BckCC8UezPYCCHhz9E8uDd0TbvMCrcGtuX2vFqZRh3pr/fRy1kfseQe7GmbRcrV6KqcOUG8GvB5/f8NNKy67mcVyQsXE19lMK23MYlErYfzgwgbpsPfWgivtxbsvU1Bos9foWt4O8KPV9/gKYtpUXQL7iCs4Q9Flkd1j/y/JVKbe7ZQlsoJ8hdKoLspE9/p/KgAx0SQafu0URjdfWJYi7dibG78GHAk97tI7EkIXk8jgL3U5ZwMfQejBV/LN9DIFhV7XywRXkBlpnsfflT0Bh47n4+U4HwMyWe7SC+Xk23U27BczsfZSMm7NZEk7OvkMNBfQ1INvdfbqHq9Gbg+jCABPqchud4ctlEN83zvs2UkNck36Dz5eztcpJpQkYPwiiAAejVXnFL575Hau6XFuOzC4GMLwoMoQyueLc34GUcKsl7SYp7uJ7HlsyNcv0NOBDYIbG/7ccbr7QFtX6/jkMUe5ROrj+rekha7tJCNLshuwwj9/RHiVpHF/uSOuj9EeArODbSf3VoqQwnucIYGmHobBaZT3E82p1UuSO/GCIaU/ydjrqOvyaDDc1QT2h6JcswiUfWeSLaAVysx7xWpc4KrqiT/awli6+M84Gc00gs54bE3cVJlfLZPNMHQRVoUopx2Ie8fqb3bWjzX1kwMvEKV8ZhHZnkS0KIj9HTs62R7wlZCMn38b4R55GcLcamgnBFii4C2TybbbDaO2P0gkOCWEXfFBYn15MZlswh9PVrbzkL+uhSEDyCZNkJOsTZVglvu8r2FvuPFBZcH8zPe16PVBii3EBYuB9t4wSP+5X/etfssUib2WNWGZiM+SNdEHphVleTuTCPlRF4uCyWP3JaQ6mX/akNuHU6jkQ/XCdBfIn5aodaS+4kT3VhUxHquXhBcJyxfjaTki4GHExtyXZXLOROE4L4yEhHrN0Upb4UwLX5DnPRJ7cb+N5Haa3WCFurLfh3p0jl1845dLtJLA9vauM162iqw7XtoFGDJcn8qEe6TvGWP1tuSgiutizOWKy9kSXCd36gfJFLt4PI/X0uQP3c9j0SRvgnJPXkYzSuBpMXvlExX2zxfTFS88XqPPveRHX73o0pA/Lx+IEcrMbTjQSW3MRdWL1wUnN/SpyK1d52nKNU9wTWXiYPVA9d7ueDzKHS+hxLLUMXhEbKzrrvglOVI1chQrNTi2V8e0OaDiBtLhWyVDdf2JYHtrNFkXbhxCPWZ/04Oiqg7IbsmsJ11e6Q4L6HYGCn484/GEuydLLhkgmZHdl8EvoKkINqVRiR4KE5SoussmFlkEfCttnOB35POMXo/j/Q4K+6VhEURXqU/jeBmv/GnmTejyEnGPpHa/GGL389m4mD1AZmPg9i/uzOUw0nydW2Etma0IDUhc+wfORElJ8/+GtjOrDZzKNTP+Q/EyZow3nx3+3+IP2ev5MpwDus2hPstz/C9OePcaIR1kHsBgHoTsltWUrYhktPyvgj32Vm1gPVpVImJBd9q+2HEH+VNKds6MCH4XFaFt6XUYr7uWTQGGf0aZOaO5b4Qsc3LW4zJLCO4uSHreVTr8fdDcG+OJPufGWz87v8h1e7m56xoPBVhj0sScidfXh7Y9j9yGgvX91sC2lipRwriRLbguvcW4qZQ7RXBbUZ2XWlAV4ZxA6T0XjXCIr0XqSsdwy/Xt9qugqTKOD+wjxsyNum/89F6DvH5uqjL9n6Y2NBcOcM8fZLzmjv9RnBdvul1kBKbMfAIElxVbjImk5k4mDogCldW872XFtz5OcqDZRHaamU9mxLQ5sKcxroeiSAlx8DtTUMR5MoS8gkGde0/EEGu5K0gFj1oNcv+lSMQ3FoRCG6yQ1WP6F6mi+m4CG3/DMlBG5Iv17fa7o1EmG4T2K8zGevEXvd+llTIfAhJ1v/1DjfRm2mY+N1P50Ptjm0GrWxvjIWaBwFwPrJXRWzzy7TORzg6gd5jr1MDFt1FodbD58tjs3YyPUaKxRcyUGKW9Nl6en6cce4nxCBK5ZTzMS2WF3xMl+ewlqMohUWrcuXqwzuL1OeRut2XkT6iESQB9uZIKUI3YWsdDrbzj52F+NnuHPiMpwKfo33uzLp3738A/wUcgqRo2RIpR7gJsBYwTd/jIZ6S4MjtLkgpxD8hfsJLved3FsU6/YdYGnVez+5S132OuKnyLvAUryQWZfxMi3XjHlaB5yqcVT2lCq9/ZY+Iu6wrlSb/rniKaLPj4gpiTfMzUKw+IPMxq3nay+9Py/E9xMjRuigDkprXPusso6EnGk+2mNf9WHAkxD0x7TsvetBqKJblcI8oxXOKWsa15vXvUeC1SHGEkJK2uyHplF6jGup4Cbf9vLb7IPkFQ/A94HBPOx6iUcK01abi+ypXkVrbtyOVWsYbv82RgDUflyNBeLckxthVk+kXsttPpNyR2z2Q8smxcBWShq/VPH42wj3u1HW3VOftUo/M9vIYza2JqUhltFLgxjA64PMxtH8hBP4VCctMls/35gjEYjljj9Dds4e4WuSdri80g8o/E+PqB/8sJ8xNYY7KpqzdFNx8WzOgjWdSzt3Qud4vLgpZKvZRTj2KflztE7zzdbKGbNxrIf6tG9E6+MxZjqqIv+TtgeT2esSveH+PWJcYm05tPOE9QiMALZl32P2/nCBVtzVp652IG8NjSlymMbZcYr/46/YLwXXkdifgF5HbPraFkHFj81yEe9yOZPS4S+fMs4iFa8RbK6XEvEx7uVOF0jiXvyYWar8eDXzOUIKb9YYUuh576aKwSQ5jU0Wy8YRacO9sYvhxz/5YQLt5pZsqRRrzJ5v8zp2+hAawbZrTWDiEFLB6pMf7W1H3uWq/3KMf/DGdJdNZc1cGrghs8x7EoutqV5e88XApTD6P5C9MW7llmIaLwH0ecawGTFznq+znHa56JNVZY4/owKpynmpJv0RqpJcY66/rB6iVSe+/XHRk8UyO8I0g5Xj/ELn9fyjxbOdqMz/S2iurxaYZ2ax766UaeNUYe5LQ6qIN8e0VwV1W8DneyywKa3mKXhZrbZK2+94Ibd3Q5m9PB7T7+pyIgSOhuwe08S99V8nAVffuQrMc7Z4T93BjvWtAG3d3STRLEfaUF3NWAIrM+yYEwfUnrCNa70By6IbgcuDTnuAd0o1gTdVgjwlo+yTEOvqbSMS2243shC4FztX63UuV+M9kbICaTzwc8W12VSiu20tsUtNKwA15hO9Y4pReTuJj4wiGCnKUGJpbemoHZLNXwi9mX0IJ4NIBn+uh47NNhgqyk01nRGjrqibj5Y7nF3nkI8062jCHPdeRuv0D2rg+QZaThOPWwD4ekoPS5cb43wjzR74tZV9D3vHzLcbfMOAE159oQ0gVtGMC2/sicLFH5nZQDfZlKdt7BHFHOJ7GkWsexNaRK3eftCVg36vEfyFiLT8XyfX7GqRwgJ+ZodlVpX8CEYYjj73LtDGClI69XRWd2JiHVC/rpBTzNYH32ozsSqwWUa6kxeIcNu2eW0MC8Hmyyc/t1sD7iFPY5KYW4+WU9psD2j6VbHOUuz6+gbBsEv87zpy5KYLS/BayLf7hMtYcG9jOXQH7QSjBLbIFNy8+M+EILh6JGEIS5h8Z2N4HEN+rDxNWCedLyHHcfTSseLWcx8UJz3MitLc6Yik8X0nVs/o881Wz/bUqBxfqv+9GLN8X9MEChcaxcilg7Tj3DedGsyJwGhKksVlG/d6bzksx/zbwXhsCa9Ow3BvBbY6sM1bEcsHoFdHdDsn8MhJxHpU8Zf6SCO09hrghNCun6/4f4hq3hxK7EbKrrlkHzgps5w+JOZOcQzdG6OsPMtwjnFFpbd3bQ+dEmrL3MVwUJjqmxGik0scD4EjuWfocXwpoa1PCija8GUnD5SwKvYqCdEF5n1CC+u4M7jFXr83bkCKnRWdlzY2hOHSSH9H3qSp7m0g1ocCsDxxFozJdVvgW4j8+XgaQ0cRmFYLTEAtZhewUNj9YLe/iG7UI9yy6D24RskT8GfHlHqXzNI3t5ovzcb820hid24acuL7+JvAeVwOrqSGgEnGuu7HYEdg6oJ0H1YDR7P04JfdJJA98SKaGlyEZhb5Mwz87lhyZpO39LrCty2m4e+UtkwyRqs/2+2COqNA8jbgpmDrFI7rQf68vpErvjymdIHoPUigibxwekYRmicdoVObxI/mT0fp+EJWf33VTpBDJQ4iv64E59PkwGvmLO5kDTxPuM7cXYwMysyC2/hiXeyCXqj3+ftGfLxZu8hTDtMYVP4Dz24QX3HG4oM1YucI5d0UYy0eQk54qcQxMjoDNJNwl6Rvj8IJJnqIdirOALSLKFV/pOZdG5oq0uLhHa2TliEplVsjjdHZKjP4NgrawXBfISaoR5oXLEZeEp72FVRS4YhkXIUd438/pvqOMraZWZCzVdzbM2Eh+P2hpMmIJ3xb4DySQ5Tb9+53AichRWB54E63LiLZTXr8Raa5vHpnk+hbxSxEXmL0TBCgv+VR0gluOIA9CleYY2BK4Q2WSS9PY6bP5AZwjKtM+Gqlf9yjxLLd51kokcldBrKSremOQhjCUPKPKZB3XWCR/dJx5/u1I4/5X5MRvJGAc0O8618VzaB+E243Mg3SnHyHrdUPvvkV188sjAC4kOHCgCC7eAjkCKaiQNU5Hsg+4TbqIFhxHEpYqOduW7EtGHp3YDLJCjPbfigRr3aKC9m6kEMgzyJFzXX8+CvxR59WRtHbNyBJfU+tMN24CTjD/OFIfbqPhRxmaK7niEdmLkeDG2aqQ/UXHuOopalnPp2qEtVZki0mRlO9XI0F5u9LIBe7Imp8P2V3u947ArI2cmMQ8nTqmg/3QraevR7jfFCSf7I40cpwPeftJu3lQSYzHRojLwDqBfbqa1j7IvqJTUTl5S6Sx/zvwthTjUPaU7RHEKn49UvUzFNchvrCVlMpdqEvQtt5YFxF5FG0JIbjlQSO4eBvv/p72lQX2Af7Hm/xFPkrwC2X8CYmuPSXD+52bE+GPpUFuj+So3ALYGLHIzyGsUk9s/BNJrdOtL5gTkIuIE3QI4ke5H43MIN1a4ByBcaWv/8RLA0G2VDJ9JRIR7vvIZlWEJJQAZr0R9brQQxa4QufTjh5Z833b3eV+vxrwVcQlaP3IfbmsA7nlDAZ3EZ5+z+EaVV6ne2TfrduhxE/f/7+KuMadjVifV4zQl8/Q2cmb+/uREcf/KsR6vEqbcagkyL2bG2U1bL2ABDPGwBdSrpt6JHlyFY289D7h969kcZ1BIbhEILgMIsF1mlMFsa7ekkH7rwN+SONoqB8qajmh6BbJ0ar13xP5PhcFar3dWkAmCraiM7/bVuuhBJwcsT8XIFkz1mSsBS5ZkazsbVB+poka8H6k0lq7gJhdEJ/Nu5AgN7w1F1ughypkWStEoQpdUdO8vU5JXh2x5H8cSdW4MWLpfQfwWVV4HqeRQzUmPqJzspsxjknuDkYs2meroj2Vsf7+fvGdlyM+8b9G3BwOjdSHeYivfqcEt4wUxbgt4jjsh1iiL9Y5MD3x/P41pGN1ts7tMyP2Y1gJZkgg5OLAPsxQRW6NBOH3r2RxnTyRJW+sRSC4/0/AS/V6v1Q97erhJunEv49wZ3OHnZCI3cmI32+/wrcEvh/4UaR219FFmWWNcdf3wwlPh9MP2FQJXoiwdWN2KvDJyP07Hym4cnsHn52JZPX4LPCqFPdahBQw+QbxCiu4sfmzkq20eCPiex6aHaBV//aj4R+ZBisiua27XZvu86so+Rg0OP/VbmIG3Dt+HLEqZ4FHENeoRarMz9V9LCtF6nWIa1Cn89cprBvRqPaVBR5GXBhc6eBVkTzz62Z4zwOA75Iue4JbL0MROcL3Efe4O9UoMAk5/VpN99yt9D0cgMQxjLfG/QqUafFO4Fdkk2HC9W+Y9Ias5frd0iASXDdIjuguAFaK1GaZ4rsldCqk3VFxWYlDSBaKa5AgqKxTqrj2j6ZxjDSocApV6Ji6tTBFN8wstO8FalX6K/CAkqmKbswbAzsj7iCxcAQS7LMk0ny6WTeKtNgWcbfIiuB+mLA0hjN0rNIS3DmIb/qgYVe6t9a5z+5IeNaCIuAy4F0p5Iz7/Fk0Muf0OxwxClnH7ruLCCu4kZUMikFwd0fcQLPc7+sR3mNpUHOu+b4wa0Vqc80BILYO7njDuROcoFpgWhxCvpkTZg44ud0tErn118JS5Ng/C8xFrIxnq+C7FslD+SOdW9tHvt9ZNPKWxnBXKHqltlA5XcWQxB+U3Hab39n54l5Lo+pXP+MA0rlAOXfAoxDL4iDg3RHWm/vujTn3fasu+16L8IyxEcu3dyCDzJq9wDLiFxqD5P43xY5sTLvx1RF/l38gBSu6xR+RY/RJORLcGQM8b9+CWENjasduU/4t+abSyxInq0CMQU5HI4xvlgj1wa1jSGJPwnzby0h2mn7G3sixdjnFHHF+oHXgtQMwH66LLHfzVn527pAkliIovVkHmUVLizjoVTPcxv4I4pQegkMRn5cRBjM4DxppvrrBQeSf93ZQCe4WiOVziPhWN2dxOQI5yupn7Ib45sXy9y5KntgsNpRRwkv1Dpq82w2xOpZTjon7zvOIK1E/4hIkoCtE1rjgvH8Cb+/zOfGuAIWn2V7685z7/44uiWvI/pL1iVCoEbE6UQiue9ghJFJ098C2XJnU8fL09RPKStp3QqyH3eBy8rfeQqQUIgWCS/w+j+yKhtRpZFXYSTelfsSnaFhaYs250HaydnGYFPje6xFkxKDgdOJY6nxXhUP7bAweAT5InNLYztXtSiQjRT9iOxpuFqFrxVWRfIR46eQ6lRGr6v1LHazlZYHvPIbczEreuP2zNFHqHrt8cpcTluJligo0t6j7neS6wLmZiE9at+iF9da9h0HB95Da7AvIPkiv7gmozZCAsH7C14AvkY2Fu8gENyR6vtrBppfl/YuEq5Ec5rHmjzOefJW4qfiyxuYRlR9/HM7XPaGfsB+S8iymwux41X/l/Cxv6kIhLrIFN5RXLR9EzbxTknsWkrM1LbZB0oi4whL9DEeorkjx3bOBx8jfegvxysX2GrsjhUnyrIjnNrRFwCZI9Z9+UQRcwYvYFu5el8LNsn8h6YrcRjNtANbaPKRiVmwl0u0DxyIBlUXHmnSWTirtOJxLI2910fEx4MIMFGaXnei3iG9vXnhXjjKvyJiQBNcnuR8i7Phgf9XYR/qYbDmicATpKsB8mjg+SxMR59A4UXCWgzwDgZxFbwRJqv7lgo/XubrmKgWdb7Uc1mpaLIpgFen3rCW3Iv7tTl7FXmvOgnkicUsIx97010Dy65YzmrNuHC5FKhIWGe8Fvk22LmFlJGdsngaTosujPDChfHBbaVehQWefQRLn9yPJdb5XW5CuCsw+SCLmtEEa0SZwn+EixILyCW8e9upZ6t5cOAIJvCkijkGOPbMiJzEE9qSMxyCkf4sj3D/EJWgBkqNzcY/mzy+Qctwx8n+OZzyp6BrfGCkdWxTcBqyMnLhlRW6T43AbsAKSiq1o2AL4Kdm6Orl5tlAVizwwA0nZWGuj0MaoFDajX/jjRCS4buItAdYLbOtUJH1YP5Fc3+/2rym+fzdSrjhrf9F2GO6j+bYYOE43mA+pBcX5b9cKsBZcsMyvVXD9oEBj906koEclY3KyQoSNJUuEEOhlPX6HlyBZO2YCJ+V876OR3KblhOzPUvGuIBk+ZgGnFGANnYJYUxflQG79cSjrPXcFPlAQefIHpATwPLKz3CbJZFkVi5XJJ7B3u3FkRj2CzHpZThwtLYYmMsHF29QfALYObOs0xP9qhP4IPHPE9Hcpv79bAcjZiwUf44d1M99MN/bPI35vbn5UKVZuUrchLQH2RUp33tTD/lyHlKL0y0FmOV6hQYsrZyxPQwhujD6FkOSvax8qSLXE9ci+AtgSJXWnkL8LkFtLJSXYr0JckfKGS415tNefPGW2syJWVMmZjASI9gofQXLFLiXfkzNHcp/VuZD1GOyrP5vxEHeKEepTv3mbe8RAqLHw5Y4oT1SC6wTRkG7koX4yJynRrepmVFSSO6RE/DjSlSb9DPAQvQks8/F8gcb0XuS46yjkKHZF4JW6md/pCfkiEttWG9JfVPHbnnyDJF4E3o+UQX2S/E4JpkSQJWS4JmYFfHdGD9fbfUhqxToN6+YDSLT3lkiRmNg4Tp/5Nnp3yuQIdQWx2u2uxP77Odx7GKlOthYNS2WtR3LHf+8jSIq/OTkT3cuA2UiGh16dnDnZWtYxeCXZFYJ4d0ImZYGsLd/L2sztF5Cy4Qv05wu89ETXxR3US/X6hC9y44TgfyCR2iG4FIkgLVGMI+hmz7ltyo3lcWB1euua4DTQDZHE1osQX6IZwErIUfM0Xmrxcjlgk4K3qr9P/hzRRbZcfy7S6zngaeAp/f/SNmPtqmzV+nBNlBNWjvWA/wQO1HGOjYdVIbjQu3+WLgnJ+bQH4qf5L32nw/rszvpS0Xk2TcnwDMQyv5L+/jMqcGNHprsj5W2RDBJLlPg/rYLdzcsX9Fqon3HFaFZCjmTvCuzHNMRv/Clv7jtlfkjHpKL/H9W/P6VkNqnUlfRz/tw6ivD0Uqcigb8LCyZ/k887DclBewjhcSA+btQxuMybOxRI/iTHoaTjcBRxA9KeRVJ53gf8DLg5sf8VZR8GOaU6EDgY8Z0NxTX6zF/tQOa9WeXDfSpPFqvccHugv2Ynab8riCV+YQ4kd5reb2mX722yfm8JgBFcgbNsHkG6oCsftyGpxIYLtKgcYZitWk8avAqx3haNuBdBYDmhUcuJmOU5b5Kb5GuB9yCnHpsFtH03cnR7sVqakqTOMNhIKlEgGT0+rFaoThSpq4FvIIFk9YIRmfEIHshpzza6lnYENu2ivceQ05WfI+5mz7a5T9HHYTbwVmAv/dmNEn0HYg39DRJTsqiJfM4qODXmGMxRJXsH5IRjkxbjMKoGgbuAW5AT6LuAJwZcXpQSP5MGLJq9YyO4LyW5X0RSYIWgCmykFoyhHLSdThfTk6RzED8Q+FaBNg93lF5vM+ljwV8gtSa/mwgLyM2h5EYxE1gXeI3+nKl/H9ZrmXc9j1j1HkIqty0Zh+zkTbYmdfEuS4n3n/UGWvaUjVJi3tU6mIsx+jbkKXHtlKHkOql3IZ9IkJ4NVI6uhljKlyBBmn8F/pFou4hEpt3z0uSZS4g/91x95lmIdXwUsbA9rcT2GV56elRp0WY/jsNsNahsAqyjYzFTZcoTiNvLX4EHm+ytbq30wwlayZu3tRZ/n0rDJXB5m/fbbjzbyZQ07iv1nMam23sm5bIR3BYk97tI3s1Q7IkcGeR15NpqAY2olpvG1/hqskmQbuhP+IKxVoB2DIM1tyZ1QUyGclIwspTPJU85qKYYq35+/iQ5S0NKK55S1c+nZz5BLY1Det1YDeKpYdxBNYLbkuRegaQ4CcU3gY97izFPkjhZtb6zgMNTtjFFF9GoLSJDmw261IG271sLbC4Z0sytQd7Uk8ewrazig75+xpMrE4XYlcaRpwYjuKk1qSrwZyRlUij+heSne4T8jtL8jAknpmxjfeB+zC/SYDAYDAZDH6FsQ9BUQxrVsXk9YSV9HdZSkvsRGlHFWZW7K3nk9tgAcruHktuKkVuDwWAwGAxGcAeD5Lpa0psqOY2B7yDpXFZToluKTHTd+xwBvkz6ykGfAX5JtqUMDQaDwWAwGDKBuSiMTxjrSkQfBNaO2PbxCQIa4rrgB5NVkPrfO6fs1/eQALteZ38wGAwGg8FgMIKbMcmdhNQYXzdy+wcB5yaILnTmRO8iaR0RfSNiIU6LPyLVq5zl1iaHwWAwGAyGviRvhvZw/qejSNDVrZHb/6YSyRORSmGuwpYjuK6SUvJyBRdGgFWRhPkh5PYBJbdlI7cGg8FgMBj6GWbB7WKs9GedeCnEmuFB4CKkytN9SHnYVtgKqb72gcB7PkvDL9hy6hkMBoPBYDCCO8FIrrOcfg2pIZ0HngIeR6pBVYE1gI0jtT2KlIxcgqUDMxgMBoPBYAR3wpJclyf3SOCMPn+elRELrpFbg8FgMBgMRnAnOFyWgXcAv+rTZ5iL1Dc3cmswGAwGg8EIrmEMyV0buB1YqY/6/jJgvpFbg8FgMBgMgwbLohAGl3f2YWAWksmgHzBXya1VKTMYDAaDwWAE1/ASVHUcS8DewHsL3NcnkIAy55ZgVcoMBoPBYDAYwTU0hctZWwF+CswBri5YH69G8uwuxNwSDAaDwWAwGME1dIiqktzngLcBuxekX0drf6CR5sxgMBgMBoNhIGFBZhmNK41UYgCfBE7tQT9eBHYE5inxHsWKOBgMBoPBYBhwmAU3G9QZ65v7JWA6cFKOfTgGyergyK2V3zUYDAaDwTAhYBbcfOAIplMq9geOR9KLxcbZwHGIr61fec1gMBgMBoPBCK4h7lgz1m0BYD0k88IBgWT3OqR08E88MlvBsiQYDAaDwWAwgmvIkejWGGtZnQVsBuwAbA5sAKwBzNa/jyIldR8B7gb+rMT2bwkia762BoPBYDAYjOAaek52IczaWvFIsL1Qg8FgMBgMRnANhSG7PuGt08iv63/GBa75f7eXaDAYDAaDwaD4PyI5ByITP20gAAAAAElFTkSuQmCC" alt="Defibooth"><span class="tld">.fr</span></span>
+    </a>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIGURATION — les seules lignes à modifier
+   ========================================================= */
+const CONFIG = {
+  titre: "Marché des Sorcières",
+  date: "1er novembre 2026",
+  lieu: "Saint-Chaptes",
+  nomFichier: "marche-des-sorcieres",
+  // Nom du dossier Google Drive où arrivent les photos de cet événement
+  dossierDrive: "Photos Marché des Sorcières",
+  // Adresse du script Google qui range les photos dans ton Google Drive (voir le guide).
+  // Laisse "" pour désactiver l'envoi.
+  urlEnvoi: "https://script.google.com/macros/s/AKfycbyDxFbVk5VjKqHWECnpjt9UBWVyByYAZvGKmPpk_ca00UqHjBgMtJnxQuYlUmT2Xwe8/exec",
+  cameraParDefaut: "user"   // "user" = selfie, "environment" = caméra arrière
+};
+/* ========================================================= */
+
+document.getElementById('startTitle').textContent = CONFIG.titre;
+document.getElementById('startDate').textContent = CONFIG.date;
+document.getElementById('startLieu').textContent = CONFIG.lieu;
+if (CONFIG.urlEnvoi) document.getElementById('startInfo').hidden = false;
+
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const startEl = document.getElementById('start');
+const startErr = document.getElementById('startErr');
+let facing = CONFIG.cameraParDefaut;
+let stream = null;
+let timerOn = false;
+
+/* ---------- Caméra ---------- */
+let mirrored = false;
+let switching = false;
+
+async function openStream(mode, exact) {
+  return navigator.mediaDevices.getUserMedia({
+    video: { facingMode: exact ? { exact: mode } : { ideal: mode }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false
+  });
+}
+
+// Cherche la caméra demandée (avant / arrière) parmi celles du téléphone
+async function openByLabel(mode) {
+  const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+  const back = /back|rear|arri[eè]re|environment|world/i, front = /front|avant|user|face/i;
+  const wanted = devices.find(d => (mode === 'environment' ? back : front).test(d.label));
+  if (!wanted) return null;
+  return navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: wanted.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+}
+
+async function startCamera() {
+  startErr.textContent = "";
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showStart("Ton navigateur ne permet pas l'accès à la caméra. Ouvre la page dans Safari ou Chrome.");
+    return;
+  }
+  try {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    let s = null;
+    try { s = await openStream(facing, true); }
+    catch (e) {
+      if (e.name === 'NotAllowedError') throw e;
+      try { s = await openByLabel(facing); } catch (e2) { s = null; }
+      if (!s) s = await openStream(facing, false);
+    }
+    stream = s;
+    const settings = stream.getVideoTracks()[0].getSettings ? stream.getVideoTracks()[0].getSettings() : {};
+    const real = settings.facingMode || facing;
+    mirrored = real === 'user';
+    video.srcObject = stream;
+    video.classList.toggle('mirror', mirrored);
+    await video.play();
+    startEl.classList.add('hidden');
+    drawOverlay();
+  } catch (e) {
+    let msg = "Impossible d'ouvrir la caméra.";
+    if (e.name === 'NotAllowedError') msg = "Accès refusé. Autorise la caméra dans les réglages du navigateur, puis réessaie.";
+    if (e.name === 'NotFoundError') msg = "Aucune caméra trouvée sur cet appareil.";
+    showStart(msg);
+  }
+}
+
+async function switchCamera() {
+  if (switching) return;
+  switching = true;
+  const btn = document.getElementById('switchBtn');
+  btn.classList.add('on');
+  const before = facing;
+  facing = facing === 'user' ? 'environment' : 'user';
+  await startCamera();
+  if (!stream) { facing = before; await startCamera(); }   // retour à la caméra d'avant si échec
+  btn.classList.remove('on');
+  switching = false;
+}
+function showStart(err) { startEl.classList.remove('hidden'); startErr.textContent = err || ""; }
+
+/* ---------- Dessins Halloween ---------- */
+function spiderWeb(ctx, cx, cy, R, startAngle, u) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,.75)';
+  ctx.lineWidth = 0.35 * u;
+  const spokes = 6, rings = 5;
+  const angles = [];
+  for (let i = 0; i <= spokes; i++) angles.push(startAngle + (Math.PI / 2) * (i / spokes));
+  angles.forEach(a => { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke(); });
+  for (let r = 1; r <= rings; r++) {
+    const rr = R * r / rings;
+    ctx.beginPath();
+    for (let i = 0; i < angles.length - 1; i++) {
+      const a1 = angles[i], a2 = angles[i + 1], am = (a1 + a2) / 2;
+      const x1 = cx + Math.cos(a1) * rr, y1 = cy + Math.sin(a1) * rr;
+      const x2 = cx + Math.cos(a2) * rr, y2 = cy + Math.sin(a2) * rr;
+      const xm = cx + Math.cos(am) * rr * 0.86, ym = cy + Math.sin(am) * rr * 0.86;
+      if (i === 0) ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(xm, ym, x2, y2);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function emoji(ctx, char, x, y, size, rot = 0) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(rot);
+  ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(char, 0, 0);
+  ctx.restore();
+}
+
+function paintFrame(ctx, w, h) {
+  const u = Math.min(w, h) / 100;
+
+  // Brume violette en haut et en bas
+  let g = ctx.createLinearGradient(0, 0, 0, h * 0.28);
+  g.addColorStop(0, 'rgba(26,8,40,.92)'); g.addColorStop(1, 'rgba(26,8,40,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h * 0.28);
+  g = ctx.createLinearGradient(0, h, 0, h * 0.72);
+  g.addColorStop(0, 'rgba(20,40,10,.75)'); g.addColorStop(0.4, 'rgba(26,8,40,.45)'); g.addColorStop(1, 'rgba(26,8,40,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, h * 0.72, w, h * 0.28);
+
+  // Cadre orange lumineux
+  ctx.save();
+  ctx.strokeStyle = '#ff7a1a';
+  ctx.shadowColor = '#ff7a1a'; ctx.shadowBlur = 3 * u;
+  ctx.lineWidth = 1.4 * u;
+  const m = 3 * u;
+  ctx.beginPath();
+  ctx.roundRect ? ctx.roundRect(m, m, w - 2 * m, h - 2 * m, 4 * u) : ctx.rect(m, m, w - 2 * m, h - 2 * m);
+  ctx.stroke();
+  ctx.restore();
+
+  const land = w > h * 1.1;   // téléphone tourné en paysage
+
+  // Toiles d'araignée dans les coins du haut
+  spiderWeb(ctx, m, m, (land ? 22 : 26) * u, 0, u);
+  spiderWeb(ctx, w - m, m, (land ? 22 : 26) * u, Math.PI / 2, u);
+  // Araignée qui pend
+  const spY = land ? 26 * u : 38 * u, spX = land ? w - 13 * u : w - 16 * u;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 0.3 * u;
+  ctx.beginPath(); ctx.moveTo(spX, m); ctx.lineTo(spX, spY); ctx.stroke();
+  ctx.restore();
+  emoji(ctx, '🕷️', spX, spY + 3 * u, 7 * u);
+
+  // Taille du titre
+  ctx.save();
+  let size = land ? 10 * u : 11 * u;
+  const maxW = land ? w * 0.56 : w * 0.86;
+  ctx.font = `${size}px "Creepster", cursive`;
+  while (ctx.measureText(CONFIG.titre).width > maxW && size > 4 * u) { size -= 0.5 * u; ctx.font = `${size}px "Creepster", cursive`; }
+  const tw = ctx.measureText(CONFIG.titre).width;
+  ctx.restore();
+
+  // Lune + sorcière : au-dessus du titre (portrait) ou à sa gauche (paysage)
+  const moonR = land ? 6.5 * u : 8 * u;
+  const moonX = land ? w / 2 - tw / 2 - moonR - 4 * u : w / 2;
+  const moonY = land ? 13 * u : 13 * u;
+  ctx.save();
+  const mg = ctx.createRadialGradient(moonX, moonY, moonR * 0.2, moonX, moonY, moonR * 2.4);
+  mg.addColorStop(0, 'rgba(255,236,170,.55)'); mg.addColorStop(1, 'rgba(255,236,170,0)');
+  ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 2.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffe9a8'; ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  emoji(ctx, '🧙‍♀️', moonX + 1 * u, moonY + 0.5 * u, moonR * 1.12, -0.15);
+  if (land) {
+    emoji(ctx, '🦇', w / 2 + tw / 2 + 7 * u, 8 * u, 6 * u, 0.25);
+    emoji(ctx, '🦇', w / 2 + tw / 2 + 14 * u, 15 * u, 4 * u, -0.2);
+  } else {
+    emoji(ctx, '🦇', w * 0.28, 9 * u, 6 * u, -0.3);
+    emoji(ctx, '🦇', w * 0.72, 7 * u, 5 * u, 0.25);
+    emoji(ctx, '🦇', w * 0.36, 19 * u, 4 * u, 0.15);
+  }
+
+  // Titre
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.font = `${size}px "Creepster", cursive`;
+  const titleY = land ? moonY + size * 0.36 : moonY + moonR + 3 * u + size;
+  ctx.lineWidth = 1 * u; ctx.strokeStyle = '#1a0828'; ctx.strokeText(CONFIG.titre, w / 2, titleY);
+  ctx.shadowColor = '#ff7a1a'; ctx.shadowBlur = 3 * u;
+  ctx.fillStyle = '#ff7a1a'; ctx.fillText(CONFIG.titre, w / 2, titleY);
+
+  // Date et lieu (sur une seule ligne en paysage)
+  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 1.5 * u;
+  if (land) {
+    ctx.font = `600 ${4.4 * u}px "Cinzel", serif`;
+    ctx.fillStyle = '#7dff6a';
+    ctx.fillText('✦ ' + CONFIG.date + ' · ' + CONFIG.lieu + ' ✦', w / 2, titleY + 8 * u);
+  } else {
+    ctx.font = `600 ${4.6 * u}px "Cinzel", serif`;
+    ctx.fillStyle = '#7dff6a';
+    ctx.fillText('✦ ' + CONFIG.date + ' ✦', w / 2, titleY + 7 * u);
+    ctx.font = `600 ${3.8 * u}px "Cinzel", serif`;
+    ctx.fillStyle = '#ffe9a8';
+    ctx.fillText(CONFIG.lieu, w / 2, titleY + 12.5 * u);
+  }
+  ctx.restore();
+
+  // Bas : citrouilles, chaudron, bougies, balai
+  const by = h - 7 * u;
+  emoji(ctx, '🎃', 11 * u, by - 2 * u, 13 * u, -0.1);
+  emoji(ctx, '🎃', 22 * u, by + 1 * u, 8 * u, 0.15);
+  emoji(ctx, '🕯️', 30 * u, by - 1 * u, 6 * u);
+  emoji(ctx, '🎃', w - 11 * u, by - 2 * u, 13 * u, 0.1);
+  emoji(ctx, '🧪', w - 22 * u, by, 7 * u, -0.2);
+  emoji(ctx, '🕯️', w - 30 * u, by - 1 * u, 6 * u);
+  emoji(ctx, '🧹', 7 * u, h * 0.55, 8 * u, -0.6);
+  emoji(ctx, '🔮', w - 8 * u, h * 0.6, 7 * u);
+}
+
+function drawOverlay() {
+  const dpr = window.devicePixelRatio || 1;
+  overlay.width = overlay.clientWidth * dpr;
+  overlay.height = overlay.clientHeight * dpr;
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  paintFrame(ctx, overlay.width, overlay.height);
+}
+window.addEventListener('resize', drawOverlay);
+// Redessine une fois les polices chargées
+if (document.fonts) {
+  Promise.all([document.fonts.load('40px "Creepster"'), document.fonts.load('600 20px "Cinzel"')])
+    .then(drawOverlay).catch(() => {});
+}
+
+/* ---------- Prise de photo ---------- */
+let lastBlob = null;
+let counting = false;
+
+function capture() {
+  const sw = window.innerWidth, sh = window.innerHeight;
+  const scale = Math.min(2, Math.max(1080 / Math.min(sw, sh), 1));
+  const W = Math.round(sw * scale), H = Math.round(sh * scale);
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const r = Math.max(W / vw, H / vh);
+  const dw = vw * r, dh = vh * r;
+  ctx.save();
+  if (mirrored) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  ctx.restore();
+  paintFrame(ctx, W, H);
+
+  const f = document.getElementById('flash');
+  f.style.transition = 'none'; f.style.opacity = 1;
+  requestAnimationFrame(() => { f.style.transition = 'opacity .4s'; f.style.opacity = 0; });
+
+  c.toBlob(blob => {
+    lastBlob = blob;
+    document.getElementById('photo').src = URL.createObjectURL(blob);
+    document.getElementById('result').style.display = 'flex';
+    const canShare = canShareFile();
+    document.getElementById('shareBtn').hidden = !canShare;
+    document.querySelector('#result .row').classList.toggle('single', !canShare);
+    document.getElementById('saveHint').textContent = isIOS
+      ? "Appuie puis choisis « Enregistrer l'image » pour la garder dans tes Photos."
+      : "Ta photo sera enregistrée dans ta Galerie.";
+    sendPhoto(blob);
+  }, 'image/jpeg', 0.9);
+}
+
+async function shoot() {
+  if (counting || !stream) return;
+  if (timerOn) {
+    counting = true;
+    const cd = document.getElementById('countdown');
+    cd.style.display = 'flex';
+    for (let i = 3; i > 0; i--) { cd.textContent = i; await new Promise(r => setTimeout(r, 1000)); }
+    cd.style.display = 'none';
+    counting = false;
+  }
+  capture();
+}
+
+/* ---------- Envoi automatique vers le Google Drive de l'organisateur ---------- */
+async function sendPhoto(blob, tries = 3) {
+  if (!CONFIG.urlEnvoi) return;
+  const st = document.getElementById('sendStatus');
+  st.hidden = false; st.classList.remove('err');
+  st.textContent = "🧹 Envoi de la photo aux organisateurs…";
+  const base64 = await new Promise(res => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.readAsDataURL(blob);
+  });
+  const body = JSON.stringify({ name: `${CONFIG.nomFichier}-${Date.now()}.jpg`, image: base64, dossier: CONFIG.dossierDrive });
+  for (let i = 0; i < tries; i++) {
+    try {
+      // "text/plain" évite le blocage du navigateur ; le script Google lit le JSON quand même
+      await fetch(CONFIG.urlEnvoi, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
+      st.textContent = "✓ Photo envoyée aux organisateurs";
+      return;
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+  st.classList.add('err');
+  st.textContent = "La photo n'a pas pu être envoyée (pas de réseau ?). Enregistre-la dans ta galerie.";
+}
+
+/* ---------- Enregistrer / partager ---------- */
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function photoFile() {
+  return new File([lastBlob], `${CONFIG.nomFichier}-${Date.now()}.jpg`, { type: 'image/jpeg' });
+}
+function canShareFile() {
+  try { return !!(navigator.canShare && navigator.canShare({ files: [photoFile()] })); } catch (e) { return false; }
+}
+function download() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(lastBlob);
+  a.download = photoFile().name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+async function share() {
+  try { await navigator.share({ files: [photoFile()] }); return true; }
+  catch (e) { return e.name === 'AbortError'; }
+}
+async function save() {
+  if (!lastBlob) return;
+  const hint = document.getElementById('saveHint');
+  if (isIOS && canShareFile()) {
+    // iPhone : le menu de partage propose « Enregistrer l'image » (va dans Photos)
+    hint.textContent = "Choisis « Enregistrer l'image » dans le menu.";
+    if (await share()) return;
+  }
+  // Android et autres : enregistrement direct (dossier Téléchargements, visible dans la Galerie)
+  download();
+  hint.textContent = "✓ Photo enregistrée ! Retrouve-la dans ta Galerie (dossier Téléchargements). Si rien ne se passe, reste appuyé sur la photo puis « Télécharger l'image ».";
+}
+
+/* ---------- Boutons ---------- */
+// Plein écran (cache la barre d'adresse du navigateur), puis ouverture de l'appareil photo
+function goFullscreen() {
+  const el = document.documentElement;
+  const fs = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (fs && !document.fullscreenElement && !document.webkitFullscreenElement) {
+    try { const p = fs.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+  }
+}
+document.getElementById('startBtn').onclick = () => { goFullscreen(); startCamera(); };
+// Si le plein écran a été quitté, on le remet au prochain appui sur le déclencheur
+document.getElementById('shutter').addEventListener('click', goFullscreen);
+document.getElementById('retakeBtn').addEventListener('click', goFullscreen);
+// Redessine le filtre quand on tourne le téléphone ou change de plein écran
+window.addEventListener('orientationchange', () => setTimeout(drawOverlay, 250));
+['fullscreenchange', 'webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => setTimeout(drawOverlay, 250)));
+document.getElementById('shutter').onclick = shoot;
+document.getElementById('switchBtn').onclick = switchCamera;
+document.getElementById('retakeBtn').onclick = () => { document.getElementById('result').style.display = 'none'; };
+document.getElementById('saveBtn').onclick = save;
+document.getElementById('shareBtn').onclick = () => { if (lastBlob) share(); };
+
+// L'appareil photo s'ouvre seulement quand on appuie sur le bouton de l'écran d'accueil.
+</script>
+</body>
+</html>
