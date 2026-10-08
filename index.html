@@ -58,7 +58,7 @@
 
   /* Écran résultat : la photo reste en plein écran, les boutons par-dessus en bas */
   #result { position: fixed; inset: 0; z-index: 10; display: none; background: #000; }
-  #result #photo { position: absolute; left: 2vw; right: 2vw; top: 2vh; height: 56vh; width: 96vw; object-fit: contain; }
+  #result #photo { position: absolute; left: 2vw; right: 2vw; top: 2vh; height: 47vh; width: 96vw; object-fit: contain; }
   @media (orientation: landscape) { #result #photo { left: 2vh; top: 3vh; bottom: 3vh; height: 94vh; width: 52vw; } }
   #result .panel {
     position: absolute; left: 0; right: 0; bottom: 0;
@@ -68,6 +68,9 @@
   }
   #result .hint { font-size: clamp(17px, 4.6vw, 21px); text-align: center; max-width: 420px; line-height: 1.35; margin: 0; }
   #result .status { font-size: clamp(18px, 5vw, 22px); font-weight: 600; color: var(--vert); text-align: center; margin: 0; text-shadow: 0 1px 4px #000; }
+  #result .btn.send { background: transparent; color: var(--orange); border: 3px solid var(--orange); box-shadow: none; }
+  #result .btn.send:disabled { opacity: .5; }
+  #result .note { font-size: 13px; opacity: .75; text-align: center; margin: -6px 0 0; }
   #result .status.err { color: #ff9a9a; }
   #result .btn { width: 100%; max-width: 440px; font-size: clamp(20px, 5.6vw, 26px); padding: 20px 18px; }
   #result .btn.big { font-size: clamp(23px, 6.6vw, 30px); padding: 24px 18px; }
@@ -120,9 +123,10 @@
     #start .info { font-size: 3.2vw; }
     #start .err { font-size: 3.4vw; }
     #start .btn { font-size: 5.2vw; padding: 4.6vw 7.5vw; border-radius: 10vw; }
-    #result .panel { gap: 3.4vw; padding: 18vw 4vw calc(5.6vw + env(safe-area-inset-bottom)); }
+    #result .panel { gap: 3vw; padding: 6vw 4vw calc(5vw + env(safe-area-inset-bottom)); }
     #result .hint { font-size: 4.6vw; max-width: none; }
     #result .status { font-size: 5.2vw; }
+    #result .note { font-size: 3.3vw; margin-top: -1.5vw; }
     #result .btn { max-width: none; font-size: 5.8vw; padding: 5vw 4vw; border-radius: 10vw; border-width: .8vw; }
     #result .btn.big { font-size: 7vw; padding: 6vw 4vw; }
     #result .row { max-width: none; gap: 3vw; }
@@ -153,6 +157,7 @@
       background: linear-gradient(to left, rgba(12,4,18,.97) 0%, rgba(12,4,18,.9) 65%, rgba(12,4,18,0) 100%); }
     #result .hint { font-size: 3.6vh; max-width: none; }
     #result .status { font-size: 4.2vh; }
+    #result .note { font-size: 2.8vh; margin-top: -1vh; }
     #result .btn { max-width: none; font-size: 5vh; padding: 3.2vh 3vh; border-radius: 10vh; border-width: .7vh; }
     #result .btn.big { font-size: 6vh; padding: 4vh 3vh; }
     #result .row { max-width: none; gap: 2vh; }
@@ -171,7 +176,7 @@
   <div class="date" id="startDate"></div>
   <div class="lieu" id="startLieu"></div>
   <p>Autorise l'appareil photo et viens prendre ta photo ensorcelée…</p>
-  <p class="info" id="startInfo" hidden>Tes photos sont aussi envoyées aux organisateurs pour l'album de l'événement.</p>
+  <p class="info" id="startInfo" hidden>Rien n'est envoyé sans ton accord : après la photo, tu pourras choisir de l'envoyer aux organisateurs pour l'album de l'événement.</p>
   <button class="btn" id="startBtn">🧙 Ouvrir l'appareil photo</button>
   <p class="err" id="startErr"></p>
 </div>
@@ -196,6 +201,8 @@
     <p class="status" id="sendStatus" hidden></p>
     <button class="btn big" id="saveBtn">📥 Enregistrer la photo</button>
     <p class="hint" id="saveHint">Ta photo sera enregistrée sur ton téléphone.</p>
+    <button class="btn send" id="sendBtn" hidden>📤 Envoyer aux organisateurs</button>
+    <p class="note" id="sendNote" hidden>Ta photo sera partagée avec les organisateurs pour l'album de l'événement.</p>
     <div class="row">
       <button class="btn secondary" id="retakeBtn">🔄 Reprendre</button>
       <button class="btn secondary" id="shareBtn" hidden>📤 Partager</button>
@@ -609,7 +616,11 @@ function capture() {
     document.getElementById('saveHint').textContent = isIOS
       ? "Appuie puis choisis « Enregistrer l'image » pour la garder dans tes Photos."
       : "Ta photo sera enregistrée dans ta Galerie.";
-    sendPhoto(blob);
+    // l'envoi aux organisateurs se fait seulement si l'invité appuie sur le bouton
+    const sb = document.getElementById('sendBtn');
+    sb.hidden = !CONFIG.urlEnvoi; sb.disabled = false; sb.textContent = '📤 Envoyer aux organisateurs';
+    document.getElementById('sendNote').hidden = !CONFIG.urlEnvoi;
+    document.getElementById('sendStatus').hidden = true;
   }, 'image/jpeg', 0.9);
 }
 
@@ -718,6 +729,13 @@ document.getElementById('shutter').onclick = shoot;
 document.getElementById('switchBtn').onclick = switchCamera;
 document.getElementById('retakeBtn').onclick = () => { document.getElementById('result').style.display = 'none'; };
 document.getElementById('saveBtn').onclick = save;
+document.getElementById('sendBtn').onclick = async (e) => {
+  const b = e.currentTarget;
+  if (!lastBlob || b.disabled) return;
+  b.disabled = true; b.textContent = '📤 Envoi en cours…';
+  await sendPhoto(lastBlob);
+  b.textContent = '✓ Envoyée aux organisateurs';
+};
 document.getElementById('shareBtn').onclick = () => { if (lastBlob) share(); };
 
 // L'appareil photo s'ouvre seulement quand on appuie sur le bouton de l'écran d'accueil.
