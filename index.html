@@ -21,10 +21,10 @@
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; width: 100%; background: #0b0510; color: #fff; font-family: "Cinzel", Georgia, serif; overflow: hidden; }
 
-  #stage { position: fixed; inset: 0; }
-  #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #stage { position: fixed; inset: 0; background: #000; }
+  #video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
   #video.mirror { transform: scaleX(-1); }
-  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 
   #controls {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
@@ -58,7 +58,8 @@
 
   /* Écran résultat : la photo reste en plein écran, les boutons par-dessus en bas */
   #result { position: fixed; inset: 0; z-index: 10; display: none; background: #000; }
-  #result #photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #result #photo { position: absolute; left: 2vw; right: 2vw; top: 2vh; height: 56vh; width: 96vw; object-fit: contain; }
+  @media (orientation: landscape) { #result #photo { left: 2vh; top: 3vh; bottom: 3vh; height: 94vh; width: 52vw; } }
   #result .panel {
     position: absolute; left: 0; right: 0; bottom: 0;
     display: flex; flex-direction: column; align-items: center; gap: 14px;
@@ -243,7 +244,7 @@ let switching = false;
 
 async function openStream(mode, exact) {
   return navigator.mediaDevices.getUserMedia({
-    video: { facingMode: exact ? { exact: mode } : { ideal: mode }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    video: { facingMode: exact ? { exact: mode } : { ideal: mode }, width: { ideal: 2560 }, height: { ideal: 1920 }, aspectRatio: { ideal: 4 / 3 } },
     audio: false
   });
 }
@@ -254,7 +255,7 @@ async function openByLabel(mode) {
   const back = /back|rear|arri[eè]re|environment|world/i, front = /front|avant|user|face/i;
   const wanted = devices.find(d => (mode === 'environment' ? back : front).test(d.label));
   if (!wanted) return null;
-  return navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: wanted.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  return navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: wanted.deviceId }, width: { ideal: 2560 }, height: { ideal: 1920 }, aspectRatio: { ideal: 4 / 3 } }, audio: false });
 }
 
 async function startCamera() {
@@ -438,15 +439,55 @@ function paintFrame(ctx, w, h) {
   emoji(ctx, '🔮', w - 8 * u, h * 0.6, 7 * u);
 }
 
+// Zone où s'affiche l'image de la caméra : format réel de la photo (3:4 / 4:3), sans recadrage.
+// En portrait, les boutons sont collés juste sous l'image ; en paysage, ils restent sur le bord droit.
+const controlsEl = document.getElementById('controls');
+function controlsSize(land) {
+  const r = controlsEl.getBoundingClientRect();
+  return land ? r.width : r.height;
+}
+function previewRect() {
+  const W = window.innerWidth, H = window.innerHeight, land = W > H;
+  const vw = video.videoWidth || (land ? 4 : 3), vh = video.videoHeight || (land ? 3 : 4);
+  const cs = land ? 0 : controlsSize(false);
+  const sc = land ? Math.min(W / vw, H / vh) : Math.min(W / vw, (H - cs) / vh);
+  const w = vw * sc, h = vh * sc;
+  const x = land ? (W - w) * 0.3 : (W - w) / 2;
+  const y = land ? (H - h) / 2 : Math.max(0, (H - h - cs) / 2);
+  return { x, y, w, h, land };
+}
+function placePreview() {
+  const land = window.innerWidth > window.innerHeight;
+  // les boutons prennent leur taille naturelle pour pouvoir être mesurés
+  const st = controlsEl.style;
+  if (land) { st.top = ''; st.bottom = ''; st.right = ''; st.left = ''; st.width = ''; }   // réglages du CSS (bord droit)
+  else { st.left = '0px'; st.right = '0px'; st.bottom = 'auto'; st.top = '0px'; st.width = ''; }
+  const r = previewRect();
+  for (const el of [video, overlay]) {
+    el.style.left = r.x + 'px'; el.style.top = r.y + 'px';
+    el.style.width = r.w + 'px'; el.style.height = r.h + 'px';
+  }
+  if (!land) st.top = (r.y + r.h) + 'px';
+}
+
 function drawOverlay() {
+  placePreview();
   const dpr = window.devicePixelRatio || 1;
-  overlay.width = overlay.clientWidth * dpr;
-  overlay.height = overlay.clientHeight * dpr;
+  const r = overlay.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  overlay.width = Math.round(r.width * dpr);
+  overlay.height = Math.round(r.height * dpr);
   const ctx = overlay.getContext('2d');
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   paintFrame(ctx, overlay.width, overlay.height);
 }
 window.addEventListener('resize', drawOverlay);
+video.addEventListener('loadedmetadata', drawOverlay);
+video.addEventListener('resize', drawOverlay);
+// Redessine le filtre dès que la taille de l'écran change (rotation du téléphone) : évite tout effet écrasé/étiré
+if (window.ResizeObserver) new ResizeObserver(() => drawOverlay()).observe(document.getElementById('stage'));
+
+window.addEventListener('orientationchange', () => setTimeout(drawOverlay, 300));
 // Redessine une fois les polices chargées
 if (document.fonts) {
   Promise.all([document.fonts.load('40px "Creepster"'), document.fonts.load('600 20px "Cinzel"')])
@@ -458,19 +499,15 @@ let lastBlob = null;
 let counting = false;
 
 function capture() {
-  const sw = window.innerWidth, sh = window.innerHeight;
-  const scale = Math.min(2, Math.max(1080 / Math.min(sw, sh), 1));
-  const W = Math.round(sw * scale), H = Math.round(sh * scale);
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+  const W = vw, H = vh;   // photo au format et à la résolution de la caméra
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const ctx = c.getContext('2d');
-
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const r = Math.max(W / vw, H / vh);
-  const dw = vw * r, dh = vh * r;
   ctx.save();
   if (mirrored) { ctx.translate(W, 0); ctx.scale(-1, 1); }
-  ctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  ctx.drawImage(video, 0, 0, W, H);
   ctx.restore();
   paintFrame(ctx, W, H);
 
