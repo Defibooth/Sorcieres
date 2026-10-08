@@ -221,6 +221,8 @@ const CONFIG = {
   // Adresse du script Google qui range les photos dans ton Google Drive (voir le guide).
   // Laisse "" pour désactiver l'envoi.
   urlEnvoi: "https://script.google.com/macros/s/AKfycbyDxFbVk5VjKqHWECnpjt9UBWVyByYAZvGKmPpk_ca00UqHjBgMtJnxQuYlUmT2Xwe8/exec",
+  // Format des photos : "camera" (3:4 / 4:3, format du téléphone) ou "2:3" (format tirage photo 10x15)
+  format: "2:3",
   cameraParDefaut: "user"   // "user" = selfie, "environment" = caméra arrière
 };
 /* ========================================================= */
@@ -363,10 +365,10 @@ function paintFrame(ctx, w, h) {
   const land = w > h * 1.1;   // téléphone tourné en paysage
 
   // Toiles d'araignée dans les coins du haut
-  spiderWeb(ctx, m, m, (land ? 22 : 26) * u, 0, u);
-  spiderWeb(ctx, w - m, m, (land ? 22 : 26) * u, Math.PI / 2, u);
+  spiderWeb(ctx, m, m, 22 * u, 0, u);
+  spiderWeb(ctx, w - m, m, 22 * u, Math.PI / 2, u);
   // Araignée qui pend
-  const spY = land ? 26 * u : 38 * u, spX = land ? w - 13 * u : w - 16 * u;
+  const spY = land ? 26 * u : 40 * u, spX = land ? w - 13 * u : w - 11 * u;
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 0.3 * u;
   ctx.beginPath(); ctx.moveTo(spX, m); ctx.lineTo(spX, spY); ctx.stroke();
@@ -375,17 +377,17 @@ function paintFrame(ctx, w, h) {
 
   // Taille du titre
   ctx.save();
-  let size = land ? 10 * u : 11 * u;
-  const maxW = land ? w * 0.56 : w * 0.86;
+  let size = 10 * u;
+  const maxW = land ? w * 0.56 : w * 0.8;
   ctx.font = `${size}px "Creepster", cursive`;
   while (ctx.measureText(CONFIG.titre).width > maxW && size > 4 * u) { size -= 0.5 * u; ctx.font = `${size}px "Creepster", cursive`; }
   const tw = ctx.measureText(CONFIG.titre).width;
   ctx.restore();
 
   // Lune + sorcière : au-dessus du titre (portrait) ou à sa gauche (paysage)
-  const moonR = land ? 6.5 * u : 8 * u;
+  const moonR = land ? 6.5 * u : 6.5 * u;
   const moonX = land ? w / 2 - tw / 2 - moonR - 4 * u : w / 2;
-  const moonY = land ? 13 * u : 13 * u;
+  const moonY = land ? 13 * u : 10.5 * u;
   ctx.save();
   const mg = ctx.createRadialGradient(moonX, moonY, moonR * 0.2, moonX, moonY, moonR * 2.4);
   mg.addColorStop(0, 'rgba(255,236,170,.55)'); mg.addColorStop(1, 'rgba(255,236,170,0)');
@@ -397,16 +399,16 @@ function paintFrame(ctx, w, h) {
     emoji(ctx, '🦇', w / 2 + tw / 2 + 7 * u, 8 * u, 6 * u, 0.25);
     emoji(ctx, '🦇', w / 2 + tw / 2 + 14 * u, 15 * u, 4 * u, -0.2);
   } else {
-    emoji(ctx, '🦇', w * 0.28, 9 * u, 6 * u, -0.3);
-    emoji(ctx, '🦇', w * 0.72, 7 * u, 5 * u, 0.25);
-    emoji(ctx, '🦇', w * 0.36, 19 * u, 4 * u, 0.15);
+    emoji(ctx, '🦇', w * 0.3, 8 * u, 5.5 * u, -0.3);
+    emoji(ctx, '🦇', w * 0.7, 6.5 * u, 4.5 * u, 0.25);
+    emoji(ctx, '🦇', w * 0.37, 16 * u, 3.5 * u, 0.15);
   }
 
   // Titre
   ctx.save();
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.font = `${size}px "Creepster", cursive`;
-  const titleY = land ? moonY + size * 0.36 : moonY + moonR + 3 * u + size;
+  const titleY = land ? moonY + size * 0.36 : moonY + moonR + 2 * u + size;
   ctx.lineWidth = 1 * u; ctx.strokeStyle = '#1a0828'; ctx.strokeText(CONFIG.titre, w / 2, titleY);
   ctx.shadowColor = '#ff7a1a'; ctx.shadowBlur = 3 * u;
   ctx.fillStyle = '#ff7a1a'; ctx.fillText(CONFIG.titre, w / 2, titleY);
@@ -420,10 +422,10 @@ function paintFrame(ctx, w, h) {
   } else {
     ctx.font = `600 ${4.6 * u}px "Cinzel", serif`;
     ctx.fillStyle = '#7dff6a';
-    ctx.fillText('✦ ' + CONFIG.date + ' ✦', w / 2, titleY + 7 * u);
+    ctx.fillText('✦ ' + CONFIG.date + ' ✦', w / 2, titleY + 6 * u);
     ctx.font = `600 ${3.8 * u}px "Cinzel", serif`;
     ctx.fillStyle = '#ffe9a8';
-    ctx.fillText(CONFIG.lieu, w / 2, titleY + 12.5 * u);
+    ctx.fillText(CONFIG.lieu, w / 2, titleY + 10.5 * u);
   }
   ctx.restore();
 
@@ -446,9 +448,16 @@ function controlsSize(land) {
   const r = controlsEl.getBoundingClientRect();
   return land ? r.width : r.height;
 }
+// Proportions de la photo (largeur / hauteur) selon le format choisi et la position du téléphone
+function targetRatio(land) {
+  if (CONFIG.format === '2:3') return land ? 3 / 2 : 2 / 3;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  return vw && vh ? vw / vh : (land ? 4 / 3 : 3 / 4);
+}
 function previewRect() {
   const W = window.innerWidth, H = window.innerHeight, land = W > H;
-  const vw = video.videoWidth || (land ? 4 : 3), vh = video.videoHeight || (land ? 3 : 4);
+  const ratio = targetRatio(land);
+  const vw = ratio, vh = 1;
   const cs = land ? 0 : controlsSize(false);
   const sc = land ? Math.min(W / vw, H / vh) : Math.min(W / vw, (H - cs) / vh);
   const w = vw * sc, h = vh * sc;
@@ -501,13 +510,18 @@ let counting = false;
 function capture() {
   const vw = video.videoWidth, vh = video.videoHeight;
   if (!vw || !vh) return;
-  const W = vw, H = vh;   // photo au format et à la résolution de la caméra
+  // recadrage au centre selon le format choisi (aucun recadrage en format "camera")
+  const ta = targetRatio(window.innerWidth > window.innerHeight);
+  let sw = vw, sh = vh;
+  if (vw / vh > ta) sw = Math.round(vh * ta); else sh = Math.round(vw / ta);
+  const sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2);
+  const W = sw, H = sh;
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const ctx = c.getContext('2d');
   ctx.save();
   if (mirrored) { ctx.translate(W, 0); ctx.scale(-1, 1); }
-  ctx.drawImage(video, 0, 0, W, H);
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
   ctx.restore();
   paintFrame(ctx, W, H);
 
