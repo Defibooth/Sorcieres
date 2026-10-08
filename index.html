@@ -900,7 +900,15 @@ function fxLoop() {
     const x = ox + p.x * vw * sc, y = oy + p.y * vh * sc;
     return { x: mirrored ? Wc - x : x, y };
   };
-  (res.faceLandmarks || []).forEach(lm => drawWitchFace(ctx, lm, map));
+  const faces = res.faceLandmarks || [];
+  if (faces.length) {
+    // on recopie l'image de la caméra dans ce calque pour pouvoir déformer le nez
+    ctx.save();
+    if (mirrored) { ctx.translate(Wc, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(video, ox, oy, vw * sc, vh * sc);
+    ctx.restore();
+  }
+  faces.forEach(lm => drawWitchFace(ctx, lm, map));
 }
 
 // Dessine le chapeau et le nez sur un visage (lm = 478 points normalisés, map = conversion en pixels)
@@ -956,31 +964,44 @@ function drawWitchHat(ctx, x, y, s, angle) {
   ctx.restore();
 }
 
+// Nez de sorcière : le vrai nez est agrandi et étiré vers le bas (effet loupe à bords doux),
+// légèrement verdi, avec une verrue. L'image est prise dans le calque lui-même.
+const noseBuf = document.createElement('canvas');
 function drawWitchNose(ctx, tip, bridge, faceW, angle) {
-  const s = faceW;
+  const r = faceW * 0.17;                       // rayon de la zone du nez prise sur l'image
+  const cx = tip.x + (bridge.x - tip.x) * 0.25, cy = tip.y + (bridge.y - tip.y) * 0.25;
+  const sx = 1.45, sy = 1.9;                    // grossissement en largeur / en hauteur
+  const dw = 2 * r * sx, dh = 2 * r * sy;
+  const W = Math.ceil(dw), H = Math.ceil(dh);
+  if (W < 4 || H < 4) return;
+  noseBuf.width = W; noseBuf.height = H;
+  const b = noseBuf.getContext('2d');
+  b.clearRect(0, 0, W, H);
+  b.drawImage(ctx.canvas, cx - r, cy - r, 2 * r, 2 * r, 0, 0, W, H);
+  // teinte verdâtre
+  b.globalCompositeOperation = 'source-atop';
+  b.fillStyle = 'rgba(110,160,50,.28)';
+  b.fillRect(0, 0, W, H);
+  // bords fondus (ellipse)
+  b.globalCompositeOperation = 'destination-in';
+  b.save(); b.translate(W / 2, H / 2); b.scale(1, H / W);
+  const g = b.createRadialGradient(0, 0, W * 0.22, 0, 0, W / 2);
+  g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  b.fillStyle = g; b.beginPath(); b.arc(0, 0, W / 2, 0, Math.PI * 2); b.fill();
+  b.restore();
+  b.globalCompositeOperation = 'source-over';
+  // on repose le nez agrandi : le haut reste à sa place, il grandit vers le bas
   ctx.save();
-  ctx.translate(tip.x, tip.y); ctx.rotate(angle); ctx.scale(1.35, 1);   // nez plus large
-  const len = Math.max(Math.hypot(tip.x - bridge.x, tip.y - bridge.y), s * 0.12);
-  // gros nez crochu verdâtre : arête fine, bout bulbeux qui retombe en crochet
-  const g = ctx.createRadialGradient(-s * 0.02, -s * 0.02, s * 0.01, 0, 0, s * 0.16);
-  g.addColorStop(0, '#c2cf8a'); g.addColorStop(0.6, '#97ab62'); g.addColorStop(1, '#6b7f3e');
-  ctx.fillStyle = g; ctx.strokeStyle = 'rgba(40,60,20,.55)'; ctx.lineWidth = s * 0.008;
-  ctx.beginPath();
-  ctx.moveTo(-s * 0.035, -len * 0.85);                                   // haut de l'arête (gauche)
-  ctx.bezierCurveTo(-s * 0.05, -len * 0.4, -s * 0.1, -s * 0.03, -s * 0.085, s * 0.04);   // aile gauche
-  ctx.bezierCurveTo(-s * 0.07, s * 0.1, -s * 0.02, s * 0.13, s * 0.0, s * 0.2);          // crochet qui descend
-  ctx.bezierCurveTo(s * 0.02, s * 0.24, s * 0.05, s * 0.2, s * 0.04, s * 0.14);
-  ctx.bezierCurveTo(s * 0.08, s * 0.12, s * 0.1, s * 0.05, s * 0.085, s * 0.01);          // aile droite
-  ctx.bezierCurveTo(s * 0.07, -s * 0.05, s * 0.045, -len * 0.4, s * 0.035, -len * 0.85); // arête (droite)
-  ctx.closePath(); ctx.fill(); ctx.stroke();
-  // reflet sur l'arête
-  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = s * 0.012; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-s * 0.012, -len * 0.7); ctx.quadraticCurveTo(-s * 0.02, -s * 0.05, -s * 0.03, s * 0.02); ctx.stroke();
+  ctx.translate(cx, cy); ctx.rotate(angle);
+  const top = -r * 1.05;
+  ctx.drawImage(noseBuf, -dw / 2, top, dw, dh);
   // verrue
-  ctx.fillStyle = '#56722f';
-  ctx.beginPath(); ctx.arc(s * 0.05, s * 0.0, s * 0.018, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.3)';
-  ctx.beginPath(); ctx.arc(s * 0.045, -s * 0.006, s * 0.006, 0, Math.PI * 2); ctx.fill();
+  const wx = r * 0.45, wy = top + dh * 0.62, wr = faceW * 0.022;
+  const gw = ctx.createRadialGradient(wx - wr * 0.3, wy - wr * 0.3, wr * 0.1, wx, wy, wr);
+  gw.addColorStop(0, '#9c8a5a'); gw.addColorStop(1, '#5b4a2a');
+  ctx.fillStyle = gw; ctx.beginPath(); ctx.arc(wx, wy, wr, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(40,30,15,.8)'; ctx.lineWidth = Math.max(1, faceW * 0.003); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(wx, wy - wr * 0.2); ctx.lineTo(wx + wr * 0.9, wy - wr * 1.6); ctx.stroke();   // poil
   ctx.restore();
 }
 
