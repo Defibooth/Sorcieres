@@ -381,12 +381,25 @@ function spiderWeb(ctx, cx, cy, R, startAngle, u) {
   ctx.restore();
 }
 
+// Les emojis sont d'abord dessinés une fois à taille moyenne (128 px) dans une petite image,
+// puis cette image est agrandie : l'iPhone n'arrive pas à dessiner les très gros emojis directement.
+const emojiCache = {};
+function emojiImage(char) {
+  if (emojiCache[char]) return emojiCache[char];
+  const S = 160, c = document.createElement('canvas');
+  c.width = S; c.height = S;
+  const x = c.getContext('2d');
+  x.font = '128px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(char, S / 2, S / 2 + 6);
+  return (emojiCache[char] = c);
+}
 function emoji(ctx, char, x, y, size, rot = 0) {
+  const img = emojiImage(char);
+  const d = size * 1.25;   // l'image fait 160 px pour un emoji de 128 px
   ctx.save();
   ctx.translate(x, y); ctx.rotate(rot);
-  ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(char, 0, 0);
+  ctx.drawImage(img, -d / 2, -d / 2, d, d);
   ctx.restore();
 }
 
