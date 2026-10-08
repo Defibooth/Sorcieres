@@ -177,7 +177,7 @@
 </div>
 
 <div id="stage">
-  <video id="video" autoplay playsinline muted></video>
+  <video id="video" autoplay playsinline muted disablepictureinpicture disableremoteplayback></video>
   <canvas id="overlay"></canvas>
 </div>
 
@@ -622,6 +622,21 @@ function goFullscreen() {
     try { const p = fs.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => {}); } catch (e) {}
   }
 }
+// Quand on quitte l'appli (bouton d'accueil du téléphone) : on coupe la caméra au lieu de passer
+// en petite fenêtre, puis on la rallume en revenant.
+video.disablePictureInPicture = true;
+let wasRunning = false;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    wasRunning = !!stream;
+    if (document.pictureInPictureElement && document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {});
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; video.srcObject = null; }
+  } else if (wasRunning && document.getElementById('result').style.display !== 'flex') {
+    startCamera();
+  }
+});
+video.addEventListener('enterpictureinpicture', () => { if (document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {}); });
+
 document.getElementById('startBtn').onclick = () => { goFullscreen(); startCamera(); };
 // Si le plein écran a été quitté, on le remet au prochain appui sur le déclencheur
 document.getElementById('shutter').addEventListener('click', goFullscreen);
