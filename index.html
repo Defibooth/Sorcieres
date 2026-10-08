@@ -668,7 +668,7 @@ function capture() {
       const res = faceLandmarker.detectForVideo(video, Math.max(performance.now(), lastTs + 1));
       lastTs = performance.now();
       const map = p => ({ x: mirrored ? W - (p.x * vw - sx) : (p.x * vw - sx), y: p.y * vh - sy });
-      (res.faceLandmarks || []).forEach(lm => drawWitchFace(ctx, lm, map));
+      (res.faceLandmarks || []).forEach(lm => drawWitchFace(ctx, lm, map, true));
     } catch (e) {}
   }
   paintFrame(ctx, W, H);
@@ -877,16 +877,30 @@ function clearFx() {
 }
 
 // Boucle d'aperçu : détecte les visages et dessine l'effet par-dessus l'image de la caméra
+// Petite image réduite pour la détection : beaucoup plus rapide que l'image caméra en pleine résolution
+const detCanvas = document.createElement('canvas');
+function detectionFrame() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const k = 480 / Math.max(vw, vh);
+  const w = Math.round(vw * k), h = Math.round(vh * k);
+  if (detCanvas.width !== w || detCanvas.height !== h) { detCanvas.width = w; detCanvas.height = h; }
+  detCanvas.getContext('2d').drawImage(video, 0, 0, w, h);
+  return detCanvas;
+}
+let lastFrame = 0;
 function fxLoop() {
   if (!fxOn) return;
   requestAnimationFrame(fxLoop);
   if (!faceLandmarker || !stream || video.readyState < 2 || !video.videoWidth) return;
   if (document.getElementById('result').style.display === 'flex') return;
   const now = performance.now();
+  if (now - lastFrame < 40) return;          // environ 25 images par seconde maximum
+  lastFrame = now;
   if (now <= lastTs) return;
   let res;
-  try { res = faceLandmarker.detectForVideo(video, now); lastTs = now; } catch (e) { return; }
-  const dpr = window.devicePixelRatio || 1;
+  try { res = faceLandmarker.detectForVideo(detectionFrame(), now); lastTs = now; } catch (e) { return; }
+  // aperçu dessiné en résolution modérée (suffisant à l'écran, bien plus fluide)
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
   const r = fxCanvas.getBoundingClientRect();
   const Wc = Math.round(r.width * dpr), Hc = Math.round(r.height * dpr);
   if (fxCanvas.width !== Wc || fxCanvas.height !== Hc) { fxCanvas.width = Wc; fxCanvas.height = Hc; }
@@ -902,17 +916,17 @@ function fxLoop() {
   };
   const faces = res.faceLandmarks || [];
   if (faces.length) {
-    // on recopie l'image de la caméra dans ce calque pour pouvoir déformer le nez
+    // l'image de la caméra est recopiée ici pour que le maquillage puisse s'y fondre
     ctx.save();
     if (mirrored) { ctx.translate(Wc, 0); ctx.scale(-1, 1); }
     ctx.drawImage(video, ox, oy, vw * sc, vh * sc);
     ctx.restore();
   }
-  faces.forEach(lm => drawWitchFace(ctx, lm, map));
+  faces.forEach(lm => drawWitchFace(ctx, lm, map, false));
 }
 
 // Dessine le chapeau et le nez sur un visage (lm = 478 points normalisés, map = conversion en pixels)
-function drawWitchFace(ctx, lm, map) {
+function drawWitchFace(ctx, lm, map, hq) {
   const P = i => map(lm[i]);
   const top = P(10), chin = P(152), left = P(234), right = P(454);
   const tip = P(1), bridge = P(168);
@@ -922,8 +936,8 @@ function drawWitchFace(ctx, lm, map) {
   // orientation de la tête : vecteur menton -> front
   const ux = (top.x - chin.x) / faceH, uy = (top.y - chin.y) / faceH;
   const angle = Math.atan2(uy, ux) + Math.PI / 2;
-  const skin = sampleSkin(ctx, [P(50), P(280), P(101), P(330)]);
-  drawWitchMakeup(ctx, lm, map, faceW);
+  drawWitchMakeup(ctx, lm, map, faceW, hq);
+  drawNoseWart(ctx, tip, faceW, angle);
   drawWitchHair(ctx, top, faceW, faceH, angle);
   const hx = top.x - ux * faceH * 0.02, hy = top.y - uy * faceH * 0.02;
   drawWitchHat(ctx, hx, hy, faceW * 1.15, angle);
@@ -956,7 +970,7 @@ function softFill(ctx, path, color, blur, mode) {
   ctx.fill(path, 'evenodd');
   ctx.restore();
 }
-function drawWitchMakeup(ctx, lm, map, faceW) {
+function drawWitchMakeup(ctx, lm, map, faceW, hq) {
   const pts = ids => ids.map(i => map(lm[i]));
   const blur = Math.max(2, faceW * 0.035);
   // 1) peau verte sur le visage (sans les yeux ni l'intérieur de la bouche)
@@ -964,13 +978,13 @@ function drawWitchMakeup(ctx, lm, map, faceW) {
   addPoly(skin, pts(FACE_OVAL));
   addPoly(skin, pts(EYE_R)); addPoly(skin, pts(EYE_L)); addPoly(skin, pts(LIPS_IN));
   softFill(ctx, skin, 'rgba(70,170,60,.45)', blur * 1.5, 'color');
-  softFill(ctx, skin, 'rgba(150,200,120,.22)', blur * 1.5, 'multiply');
+  if (hq) softFill(ctx, skin, 'rgba(150,200,120,.22)', blur * 1.5, 'multiply');
   // 2) fard à paupières violet, entre l'œil et le sourcil
   for (const [lid, brow] of [[LID_R, BROW_R], [LID_L, BROW_L]]) {
     const sh = new Path2D();
     addPoly(sh, pts(lid).concat(pts(brow).reverse()));
     softFill(ctx, sh, 'rgba(95,20,120,.9)', blur * 1.2, 'multiply');
-    softFill(ctx, sh, 'rgba(60,10,80,.35)', blur * 0.5, 'multiply');
+    if (hq) softFill(ctx, sh, 'rgba(60,10,80,.35)', blur * 0.5, 'multiply');
   }
   // 3) cernes sombres sous les yeux
   for (const low of [LOW_R, LOW_L]) {
@@ -982,12 +996,56 @@ function drawWitchMakeup(ctx, lm, map, faceW) {
   // 4) sourcils plus sombres
   for (const br of [BROW_FULL_R, BROW_FULL_L]) {
     const b = new Path2D(); addPoly(b, pts(br));
-    softFill(ctx, b, 'rgba(20,10,25,.7)', blur * 0.35, 'multiply');
+    if (hq) softFill(ctx, b, 'rgba(20,10,25,.7)', blur * 0.35, 'multiply');
+    else { ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = 'rgba(20,10,25,.6)'; ctx.fill(b); ctx.restore(); }
   }
   // 5) lèvres violet très foncé
   const lips = new Path2D();
   addPoly(lips, pts(LIPS_OUT)); addPoly(lips, pts(LIPS_IN));
-  softFill(ctx, lips, 'rgba(55,10,60,.85)', blur * 0.3, 'source-over');
+  if (hq) softFill(ctx, lips, 'rgba(55,10,60,.85)', blur * 0.3, 'source-over');
+  else { ctx.save(); ctx.fillStyle = 'rgba(55,10,60,.8)'; ctx.fill(lips, 'evenodd'); ctx.restore(); }
+}
+
+// Grosse verrue sur le bout du nez, décalée sur le côté : une boule irrégulière et granuleuse, avec un poil
+function drawNoseWart(ctx, tip, s, angle) {
+  ctx.save();
+  ctx.translate(tip.x, tip.y); ctx.rotate(angle);
+  ctx.translate(s * 0.048, s * 0.004);                // désaxée vers le côté du nez
+  const r = s * 0.042;
+  // contour irrégulier
+  const blob = new Path2D();
+  const n = 9;
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const k = 1 + 0.12 * Math.sin(a * 3 + 1) + 0.07 * Math.cos(a * 5);
+    const x = Math.cos(a) * r * k, y = Math.sin(a) * r * k * 0.9;
+    i ? blob.lineTo(x, y) : blob.moveTo(x, y);
+  }
+  blob.closePath();
+  // ombre portée
+  ctx.save(); ctx.translate(r * 0.15, r * 0.3);
+  ctx.fillStyle = 'rgba(30,20,10,.35)'; ctx.fill(blob); ctx.restore();
+  // volume
+  const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r * 1.1);
+  g.addColorStop(0, '#a9b06a'); g.addColorStop(0.6, '#6f7a3a'); g.addColorStop(1, '#3e4620');
+  ctx.fillStyle = g; ctx.fill(blob);
+  // relief granuleux : petites bosses claires/sombres qui se fondent dans la verrue
+  ctx.save(); ctx.clip(blob);
+  for (const [x, y, rr, light] of [[-0.35, 0.15, 0.32, 0], [0.3, -0.25, 0.3, 1], [0.35, 0.35, 0.28, 0], [-0.1, -0.5, 0.26, 1], [0.0, 0.1, 0.3, 1], [-0.45, -0.25, 0.22, 0]]) {
+    const gg = ctx.createRadialGradient(x * r, y * r, 0, x * r, y * r, rr * r);
+    gg.addColorStop(0, light ? 'rgba(220,225,160,.35)' : 'rgba(30,35,10,.3)');
+    gg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gg; ctx.fillRect((x - rr) * r, (y - rr) * r, 2 * rr * r, 2 * rr * r);
+  }
+  ctx.restore();
+  // reflet
+  ctx.fillStyle = 'rgba(255,250,235,.55)';
+  ctx.beginPath(); ctx.ellipse(-r * 0.35, -r * 0.4, r * 0.22, r * 0.13, -0.6, 0, Math.PI * 2); ctx.fill();
+  // un long poil fin et frisé
+  ctx.strokeStyle = 'rgba(25,18,10,.85)'; ctx.lineWidth = Math.max(1, s * 0.0025); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(r * 0.2, -r * 0.7);
+  ctx.bezierCurveTo(r * 0.5, -r * 1.3, r * 0.1, -r * 1.6, r * 0.6, -r * 2.0); ctx.stroke();
+  ctx.restore();
 }
 
 // Couleur moyenne de la peau (prise sur les joues) pour que le nez se fonde dans le visage
